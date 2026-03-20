@@ -6,20 +6,52 @@
 <title>Lot Matcher — BC Item Tracking</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<!-- MSAL for Microsoft auth — works inside SharePoint via org SSO -->
-<script src="https://alcdn.msauth.net/browser/2.38.2/js/msal-browser.min.js"></script>
 <style>
   :root {
     --bg: #0f1117; --surface: #181c27; --surface2: #1e2435; --border: #2a3045;
     --accent: #3b82f6; --accent2: #10b981; --warn: #f59e0b; --danger: #ef4444;
-    --ms: #0078d4; --text: #e2e8f0; --muted: #64748b;
+    --text: #e2e8f0; --muted: #64748b;
     --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; padding: 32px 24px; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); min-height: 100vh; }
+
+  /* ── Password Gate ── */
+  #gate {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .gate-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 40px 36px; max-width: 380px; width: 100%; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  }
+  .gate-logo { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+  .gate-sub { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); margin-bottom: 32px; }
+  .gate-label { font-family: var(--mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); text-align: left; display: block; margin-bottom: 8px; }
+  .gate-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-family: var(--mono); font-size: 0.9rem; padding: 12px 14px;
+    outline: none; margin-bottom: 12px; text-align: center; letter-spacing: 0.1em;
+    transition: border-color 0.15s;
+  }
+  .gate-input:focus { border-color: var(--accent); }
+  .gate-input.error { border-color: var(--danger); }
+  .gate-btn {
+    width: 100%; padding: 12px; background: var(--accent); color: #fff; border: none;
+    border-radius: 6px; font-family: var(--mono); font-size: 0.82rem; font-weight: 600;
+    cursor: pointer; transition: background 0.15s; letter-spacing: 0.04em;
+  }
+  .gate-btn:hover { background: #2563eb; }
+  .gate-error { font-family: var(--mono); font-size: 0.72rem; color: var(--danger); margin-top: 10px; display: none; }
+  .gate-note { font-size: 0.7rem; color: var(--muted); margin-top: 20px; line-height: 1.5; }
+
+  /* ── Main Tool ── */
+  #app { display: none; padding: 32px 24px; }
   header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
   header h1 { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; letter-spacing: 0.05em; color: var(--accent); }
   header span { font-size: 0.78rem; color: var(--muted); font-family: var(--mono); }
+  header .signout { margin-left: auto; font-family: var(--mono); font-size: 0.68rem; color: var(--muted); cursor: pointer; border: 1px solid var(--border); padding: 4px 10px; border-radius: 4px; background: none; }
+  header .signout:hover { color: var(--danger); border-color: var(--danger); }
 
   /* Sync bar */
   .sync-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #001a2e; border: 1px solid #003060; border-radius: 8px; padding: 12px 16px; margin-bottom: 24px; }
@@ -27,10 +59,10 @@
   .sync-label { font-family: var(--mono); font-size: 0.72rem; color: #5ba4d4; flex: 1; min-width: 160px; }
   .sync-status { font-family: var(--mono); font-size: 0.68rem; padding: 3px 10px; border-radius: 3px; background: var(--surface2); color: var(--muted); transition: all 0.2s; }
   .sync-status.synced { background: #0f2a1e; color: var(--accent2); }
-  .sync-status.syncing { background: #001a2e; color: var(--ms); }
+  .sync-status.syncing { background: #001a2e; color: #5ba4d4; }
   .sync-status.error { background: #2a0f0f; color: var(--danger); }
   .btn-sync { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; border: 1px solid #003060; cursor: pointer; font-family: var(--mono); font-size: 0.75rem; font-weight: 600; background: #001e3a; color: #5ba4d4; transition: all 0.15s; }
-  .btn-sync:hover { background: #002a50; border-color: var(--ms); color: #7ec8f0; }
+  .btn-sync:hover { background: #002a50; border-color: #0078d4; color: #7ec8f0; }
   .btn-sync:disabled { opacity: 0.5; cursor: not-allowed; }
 
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
@@ -95,194 +127,168 @@
   .big-copy-area { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-family: var(--mono); font-size: 0.75rem; color: var(--accent2); flex: 1; min-width: 200px; word-break: break-all; line-height: 1.8; max-height: 120px; overflow-y: auto; cursor: pointer; }
   .big-copy-area:hover { border-color: var(--accent2); }
 
-  /* Instructions banner */
-  .instructions {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-    padding: 16px 20px; margin-bottom: 24px; font-size: 0.78rem; color: var(--muted); line-height: 1.8;
-  }
-  .instructions strong { color: var(--text); }
-  .instructions .step { display: flex; gap: 12px; margin-bottom: 6px; }
-  .instructions .step-num { font-family: var(--mono); color: var(--accent); font-weight: 600; min-width: 20px; }
-
   @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>// LOT MATCHER</h1>
-  <span>Business Central · Item Tracking Lines · Noble Foods USA</span>
-</header>
-
-<!-- How to use -->
-<div class="instructions">
-  <div class="step"><span class="step-num">1</span><span>Click <strong>Sync Lots</strong> below — signs in with your Noble Foods Microsoft account and loads live BC lots automatically.</span></div>
-  <div class="step"><span class="step-num">2</span><span>Paste your <strong>cold storage pallet list</strong> into the left panel (copy from the PDF).</span></div>
-  <div class="step"><span class="step-num">3</span><span>Hit <strong>▶ Match Lots</strong> — copy matched BC lot numbers straight into Business Central item tracking lines.</span></div>
+<!-- ── Password Gate ── -->
+<div id="gate">
+  <div class="gate-box">
+    <div class="gate-logo">// LOT MATCHER</div>
+    <div class="gate-sub">Business Central · Noble Foods USA</div>
+    <label class="gate-label">Password</label>
+    <input type="password" class="gate-input" id="pwInput" placeholder="••••••••••" onkeydown="if(event.key==='Enter')checkPassword()"/>
+    <button class="gate-btn" onclick="checkPassword()">Enter</button>
+    <div class="gate-error" id="gateError">Incorrect password. Try again.</div>
+    <div class="gate-note">Contact Mitchell for access.</div>
+  </div>
 </div>
 
-<!-- Sync bar -->
-<div class="sync-bar">
-  <span class="sync-icon">⚡</span>
-  <span class="sync-label">Live BC Lots — Lot Availability.xlsx (OneDrive)</span>
-  <span class="sync-status" id="syncStatus">Not synced</span>
-  <button class="btn-sync" id="syncBtn" onclick="syncLots()">⟳ Sync Lots</button>
-</div>
+<!-- ── Main App ── -->
+<div id="app">
+  <header>
+    <h1>// LOT MATCHER</h1>
+    <span>Business Central · Item Tracking Lines</span>
+    <button class="signout" onclick="signOut()">Sign out</button>
+  </header>
 
-<div class="grid">
-  <!-- Pallet input -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="label">① Cold Storage Pallets</span>
-      <span class="badge" id="badge-pallets">0 rows</span>
-    </div>
-    <textarea id="palletInput" placeholder="Paste pallet data from cold storage PDF.&#10;&#10;Accepts tab-separated rows (pallet, date, farm)&#10;or just pallet numbers one per line:&#10;&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
-    <div class="note">Farm of origin column is used to automatically pick the right BC prefix when multiple lots match.</div>
+  <!-- Sync bar -->
+  <div class="sync-bar">
+    <span class="sync-icon">⚡</span>
+    <span class="sync-label">Live BC Lots — Lot Availability.xlsx</span>
+    <span class="sync-status" id="syncStatus">Not synced</span>
+    <button class="btn-sync" id="syncBtn" onclick="syncLots()">⟳ Sync Lots</button>
   </div>
 
-  <!-- Lots panel -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="label">② BC Lots (Live from OneDrive)</span>
-      <span class="badge" id="badge-lots">0 lots</span>
+  <div class="grid">
+    <!-- Pallet input -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="label">① Cold Storage Pallets</span>
+        <span class="badge" id="badge-pallets">0 rows</span>
+      </div>
+      <textarea id="palletInput" placeholder="Paste pallet data from cold storage PDF.&#10;&#10;Tab-separated (pallet, date, farm) or just pallet numbers:&#10;&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
+      <div class="note">Farm of origin is used to pick the right BC prefix when multiple lots match the same pallet.</div>
     </div>
-    <div id="lotPanel">
-      <div class="lot-preview-panel">
-        <span class="waiting">Click <strong style="color:var(--ms)">⟳ Sync Lots</strong> above to load live BC lot numbers from your OneDrive automatically.<br><br>Signs in silently with your Noble Foods Microsoft account — no password needed.</span>
+
+    <!-- Lots panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="label">② BC Lots (Live)</span>
+        <span class="badge" id="badge-lots">0 lots</span>
+      </div>
+      <div id="lotPanel">
+        <div class="lot-preview-panel">
+          <span class="waiting">Click <strong style="color:#5ba4d4">⟳ Sync Lots</strong> above to load live BC lot numbers automatically.<br><br>Updates every time you sync — always current with BC inventory.</span>
+        </div>
+      </div>
+      <div class="note">Pulls directly from Lot Availability.xlsx — no file uploading needed.</div>
+    </div>
+  </div>
+
+  <!-- Farm → Prefix mapping -->
+  <div class="mapping-section" id="mappingSection" style="display:none">
+    <h2>③ Farm → BC Prefix Mapping</h2>
+    <div class="mapping-grid" id="mappingGrid"></div>
+    <p style="font-size:0.72rem;color:var(--muted);margin-top:10px;">
+      Typos in farm names are grouped automatically. Enter the 4-digit BC prefix for each farm (e.g. <span style="color:var(--accent)">3518</span> for SLIGHTLY SCRAMBL). Saved permanently in your browser.
+    </p>
+  </div>
+
+  <!-- Actions -->
+  <div class="actions">
+    <button class="btn btn-primary" onclick="runMatch()">▶ Match Lots</button>
+    <button class="btn btn-secondary" onclick="clearAll()">✕ Clear</button>
+  </div>
+
+  <!-- Results -->
+  <div class="results-panel" id="resultsPanel" style="display:none">
+    <div class="results-header">
+      <span class="label">④ Matched Results</span>
+      <div class="stats">
+        <div class="stat ok"><span class="num" id="statOk">0</span> matched</div>
+        <div class="stat warn"><span class="num" id="statWarn">0</span> ambiguous</div>
+        <div class="stat err"><span class="num" id="statErr">0</span> unmatched</div>
       </div>
     </div>
-    <div class="note">Auto-refreshes from your Lot Availability.xlsx — always current with BC inventory.</div>
-  </div>
-</div>
-
-<!-- Farm → Prefix mapping -->
-<div class="mapping-section" id="mappingSection" style="display:none">
-  <h2>③ Farm → BC Prefix Mapping</h2>
-  <div class="mapping-grid" id="mappingGrid"></div>
-  <p style="font-size:0.72rem;color:var(--muted);margin-top:10px;">
-    Typos in farm names are grouped automatically. Enter the 4-digit BC prefix for each farm (e.g. <span style="color:var(--accent)">3518</span> for SLIGHTLY SCRAMBL). Saved permanently in your browser.
-  </p>
-</div>
-
-<!-- Actions -->
-<div class="actions">
-  <button class="btn btn-primary" onclick="runMatch()">▶ Match Lots</button>
-  <button class="btn btn-secondary" onclick="clearAll()">✕ Clear</button>
-</div>
-
-<!-- Results -->
-<div class="results-panel" id="resultsPanel" style="display:none">
-  <div class="results-header">
-    <span class="label">④ Matched Results</span>
-    <div class="stats">
-      <div class="stat ok"><span class="num" id="statOk">0</span> matched</div>
-      <div class="stat warn"><span class="num" id="statWarn">0</span> ambiguous</div>
-      <div class="stat err"><span class="num" id="statErr">0</span> unmatched</div>
+    <table>
+      <thead>
+        <tr><th>Pallet</th><th>Lay Date</th><th>Farm (PDF)</th><th>BC Lot Number</th><th>Status</th><th>Copy</th></tr>
+      </thead>
+      <tbody id="resultBody"></tbody>
+    </table>
+    <div class="copy-all-wrap">
+      <div style="flex:1">
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:4px;letter-spacing:0.06em;text-transform:uppercase;">All Matched Lots — click to copy</div>
+        <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()">—</div>
+      </div>
+      <button class="btn btn-success" onclick="copyAllLots()">⧉ Copy All to Clipboard</button>
     </div>
-  </div>
-  <table>
-    <thead>
-      <tr><th>Pallet</th><th>Lay Date</th><th>Farm (PDF)</th><th>BC Lot Number</th><th>Status</th><th>Copy</th></tr>
-    </thead>
-    <tbody id="resultBody"></tbody>
-  </table>
-  <div class="copy-all-wrap">
-    <div style="flex:1">
-      <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:4px;letter-spacing:0.06em;text-transform:uppercase;">All Matched Lots — click to copy</div>
-      <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()">—</div>
-    </div>
-    <button class="btn btn-success" onclick="copyAllLots()">⧉ Copy All to Clipboard</button>
   </div>
 </div>
 
 <script>
+// ── Password ──────────────────────────────────────────────────────
+const PASS_HASH = '7fc9c7b529e8903dd2a0c74252c07f5ae71f56a3d31e2c7ba77e1e5a4e2c3b9f'; // Heritage1! sha256-like placeholder
+const CORRECT = 'Heritage1!';
+
+function checkPassword() {
+  const val = document.getElementById('pwInput').value;
+  if (val === CORRECT) {
+    sessionStorage.setItem('lm_auth', '1');
+    document.getElementById('gate').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    syncLots(); // auto-sync on login
+  } else {
+    const inp = document.getElementById('pwInput');
+    const err = document.getElementById('gateError');
+    inp.classList.add('error');
+    err.style.display = 'block';
+    inp.value = '';
+    setTimeout(() => inp.classList.remove('error'), 1000);
+  }
+}
+
+function signOut() {
+  sessionStorage.removeItem('lm_auth');
+  document.getElementById('gate').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('pwInput').value = '';
+}
+
+// Check if already authenticated this session
+if (sessionStorage.getItem('lm_auth') === '1') {
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+}
+
 // ── Config ────────────────────────────────────────────────────────
-// IMPORTANT: Replace CLIENT_ID with your Azure App Registration client ID
-// Until you have one, the tool falls back to an interactive login popup
-// Graph API path to the Excel file
-const TENANT = 'noblefoodsusa.onmicrosoft.com';
-const FILE_PATH = '/personal/mitchell_paliganoff_happyegg_com/Documents/Lot Availability.xlsx';
+// Convert SharePoint share link to direct download
+const SP_DOWNLOAD = 'https://noblefoodsusa-my.sharepoint.com/:x:/g/personal/mitchell_paliganoff_happyegg_com/IQCq7xQPJccNSKHfZZUTTCmDAXJYPqFHfU3rRUA3sylqW04?e=aK9BOS&download=1';
 const SHEET_NAME = 'Lot Availability';
 const COL_HEADER = 'Row Labels';
 
-// MSAL config — uses a well-known public client ID for dev/testing
-// For production, replace with your org's Azure App Registration client ID
-const msalConfig = {
-  auth: {
-    clientId: '04b07795-8ddb-461a-bbee-02f9e1bf7b46', // Azure CLI public client — works for org users
-    authority: `https://login.microsoftonline.com/${TENANT}`,
-    redirectUri: window.location.href.split('?')[0]
-  },
-  cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: true }
-};
-
-const loginRequest = {
-  scopes: ['Files.Read', 'User.Read']
-};
-
-let msalInstance = null;
+// ── State ─────────────────────────────────────────────────────────
 let parsedLots = [];
 let parsedPallets = [];
 let farmPrefixMap = JSON.parse(localStorage.getItem('lotmatcher_prefixes') || '{}');
 
-// Init MSAL
-async function initMsal() {
-  msalInstance = new msal.PublicClientApplication(msalConfig);
-  await msalInstance.initialize();
-  // Handle redirect response if coming back from login
-  await msalInstance.handleRedirectPromise();
-}
-
 // ── Sync ──────────────────────────────────────────────────────────
 async function syncLots() {
   document.getElementById('syncBtn').disabled = true;
-  setStatus('syncing', '⟳ Signing in...');
-
+  setStatus('syncing', '⟳ Fetching lots...');
   try {
-    if (!msalInstance) await initMsal();
+    const res = await fetch(SP_DOWNLOAD);
+    if (!res.ok) throw new Error(`HTTP ${res.status} — check the share link is set to "Anyone with link"`);
 
-    // Try silent token first (works if already logged in)
-    let tokenResponse;
-    const accounts = msalInstance.getAllAccounts();
+    const buf = await res.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
 
-    if (accounts.length > 0) {
-      try {
-        tokenResponse = await msalInstance.acquireTokenSilent({ ...loginRequest, account: accounts[0] });
-      } catch(e) {
-        // Silent failed — do popup
-        tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
-      }
-    } else {
-      // No account — popup login
-      tokenResponse = await msalInstance.acquireTokenPopup(loginRequest);
-    }
-
-    setStatus('syncing', '⟳ Fetching lots...');
-    const token = tokenResponse.accessToken;
-
-    // Get the file via Graph API using the OneDrive path
-    const encodedPath = encodeURIComponent(FILE_PATH);
-    const graphUrl = `https://graph.microsoft.com/v1.0/me/drive/root:${encodedPath}:/content`;
-
-    const fileRes = await fetch(graphUrl, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    if (!fileRes.ok) {
-      const err = await fileRes.text();
-      throw new Error(`Graph API ${fileRes.status}: ${err.slice(0, 120)}`);
-    }
-
-    const arrayBuffer = await fileRes.arrayBuffer();
-    const wb = XLSX.read(arrayBuffer, { type: 'array' });
-
-    // Find sheet
     let sheet = wb.Sheets[SHEET_NAME] || wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    if (!rows.length) throw new Error('No data found in file.');
 
-    if (!rows.length) throw new Error('No data found in Lot Availability.xlsx');
-
-    // Find lot column
     const keys = Object.keys(rows[0]);
     const lotKey = keys.find(k => k === COL_HEADER)
       || keys.find(k => k.toLowerCase().includes('lot') || k.toLowerCase().includes('row'))
@@ -292,9 +298,8 @@ async function syncLots() {
       .map(r => String(r[lotKey] || '').trim())
       .filter(v => /^\d{4}-\d+/.test(v));
 
-    if (!lots.length) throw new Error(`No BC lot numbers found. Column used: "${lotKey}"`);
+    if (!lots.length) throw new Error(`No BC lot numbers found in column "${lotKey}".`);
 
-    // Success
     parsedLots = parseLotInput(lots.join('\n'));
     setStatus('synced', `✓ ${lots.length} lots loaded`);
     document.getElementById('badge-lots').textContent = `${lots.length} lots`;
@@ -308,10 +313,9 @@ async function syncLots() {
       </div>`;
 
   } catch(e) {
-    setStatus('error', '✕ ' + e.message.slice(0, 60));
+    setStatus('error', '✕ ' + e.message.slice(0, 70));
     console.error('Sync error:', e);
   }
-
   document.getElementById('syncBtn').disabled = false;
 }
 
@@ -468,8 +472,10 @@ function clearAll() {
   parsedPallets=[];
 }
 
-// Auto-init MSAL on load so silent auth is ready
-initMsal().catch(console.error);
+// Auto sync if already authenticated
+if (sessionStorage.getItem('lm_auth') === '1') {
+  syncLots();
+}
 </script>
 </body>
 </html>
