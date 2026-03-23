@@ -199,7 +199,7 @@
         ondragover="handleImgDragOver(event)" ondragleave="handleImgDragLeave(event)" ondrop="handleImgDrop(event)">
         <input type="file" id="imgFileInput" accept="image/*" onchange="handleImgFile(event)">
         <span style="font-size:1.4rem">📷</span>
-        <div class="img-drop-label"><strong>Drop screenshot or photo here</strong><br>AI reads pallet numbers automatically</div>
+        <div class="img-drop-label"><strong>Drop screenshot or photo here</strong><br>or press <strong style="color:var(--accent)">Ctrl+V</strong> / <strong style="color:var(--accent)">Cmd+V</strong> to paste from clipboard<br><span style="font-size:0.65rem;color:var(--muted)">AI reads pallet numbers automatically</span></div>
         <img id="imgPreview" class="img-preview"/>
         <div class="scan-status" id="scanStatus"></div>
       </div>
@@ -348,6 +348,34 @@ function setStatus(type, msg) {
   el.textContent = msg;
   el.className = 'sync-status' + (type ? ' ' + type : '');
 }
+
+
+// ── Paste from clipboard ──────────────────────────────────────────
+document.addEventListener('paste', function(e) {
+  // Only handle if app is visible and no text input is focused
+  if (document.getElementById('app').style.display === 'none') return;
+  const active = document.activeElement;
+  const isTyping = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  if (isTyping) return;
+
+  const items = e.clipboardData?.items;
+  if (!items) return;
+
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (file) {
+        // Flash the drop zone to show it was received
+        const dz = document.getElementById('imgDropZone');
+        dz.style.borderColor = 'var(--accent)';
+        setTimeout(() => dz.style.borderColor = '', 300);
+        processImage(file);
+      }
+      break;
+    }
+  }
+});
 
 // ── Lot Search ────────────────────────────────────────────────────
 function searchLots() {
