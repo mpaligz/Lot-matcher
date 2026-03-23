@@ -250,7 +250,7 @@
     </div>
     <table>
       <thead>
-        <tr><th>Pallet</th><th>BC Lot Number</th><th>Status</th><th>Copy</th></tr>
+        <tr><th>Pallet</th><th>BC Lot Number</th><th>Qty Available</th><th>Status</th><th>Copy</th></tr>
       </thead>
       <tbody id="resultBody"></tbody>
     </table>
@@ -274,6 +274,7 @@ const CORRECT_PASSWORD = 'Heritage1!';
 // ── State ─────────────────────────────────────────────────────────
 let parsedLots = [];
 let parsedPallets = [];
+let lotQtyMap = {};
 let farmPrefixMap = JSON.parse(localStorage.getItem('lotmatcher_prefixes') || '{}');
 
 // ── Auth ──────────────────────────────────────────────────────────
@@ -322,18 +323,31 @@ async function syncLots() {
     const lotKey = keys.find(k => k === COL_HEADER)
       || keys.find(k => k.toLowerCase().includes('lot') || k.toLowerCase().includes('row'))
       || keys[0];
-    const lots = rows
-      .map(r => String(r[lotKey] || '').trim())
-      .filter(v => /^(\d{4}|[A-Z]{2,6})[ -].+/.test(v) && v.length > 4);
-    if (!lots.length) throw new Error(`No BC lot numbers found. Column: "${lotKey}".`);
-    parsedLots = parseLotInput(lots.join('\n'));
-    setStatus('synced', `✓ ${lots.length} lots loaded`);
-    document.getElementById('badge-lots').textContent = `${lots.length} lots`;
+    const qtyKey = keys.find(k => k.toLowerCase().includes('quantity') || k.toLowerCase().includes('qty') || k.toLowerCase().includes('remaining'))
+      || null;
+
+    const lotData = rows
+      .map(r => ({
+        lot: String(r[lotKey] || '').trim(),
+        qty: qtyKey ? (Number(r[qtyKey]) || 0) : null
+      }))
+      .filter(r => /^(\d{4}|[A-Z]{2,6})[ -].+/.test(r.lot) && r.lot.length > 4);
+
+    if (!lotData.length) throw new Error(`No BC lot numbers found. Column: "${lotKey}".`);
+    parsedLots = parseLotInput(lotData.map(r => r.lot).join('\n'));
+
+    // Build quantity lookup map
+    lotQtyMap = {};
+    lotData.forEach(r => { lotQtyMap[r.lot] = r.qty; });
+
+    setStatus('synced', `✓ ${lotData.length} lots loaded`);
+    document.getElementById('badge-lots').textContent = `${lotData.length} lots`;
     document.getElementById('badge-lots').className = 'badge loaded';
-    const preview = lots.slice(0,10).join('\n') + (lots.length > 10 ? `\n… +${lots.length-10} more` : '');
+    const preview = lotData.slice(0,10).map(r => r.lot + (r.qty !== null ? ` (${r.qty.toLocaleString()})` : '')).join('\n')
+      + (lotData.length > 10 ? `\n… +${lotData.length-10} more` : '');
     document.getElementById('lotPanel').innerHTML = `
       <div class="lot-preview-panel">
-        <span class="ok-label">✓ ${lots.length} BC lots loaded</span>
+        <span class="ok-label">✓ ${lotData.length} BC lots loaded</span>
         <div class="lot-list">${preview.replace(/\n/g,'<br>')}</div>
       </div>`;
   } catch(e) {
@@ -452,7 +466,7 @@ function processImage(file) {
     status.textContent = '⟳ Scanning for pallet numbers...';
 
     try {
-      const VISION_KEY = 'AIzaSyAjYXQ9s8HEq501AkujUqO7QgoE15muH2M';
+      const VISION_KEY = 'AIzaSyAZOO5jPRlQxikUnaYb8sHMraJ2dp4MyhA';
       const response = await fetch(
         `https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,
         {
@@ -608,9 +622,12 @@ function runMatch() {
     const lc = r.status==='OK'?'lot-full':r.status==='AMBIGUOUS'?'lot-ambiguous':'lot-unknown';
     const safe = (r.result||'').replace(/'/g,"\\'");
     const tr = document.createElement('tr');
+    const qty = r.status==='OK' && lotQtyMap[r.result] !== undefined ? lotQtyMap[r.result]?.toLocaleString() : '—';
+    const qtyColor = r.status==='OK' ? (lotQtyMap[r.result] > 0 ? 'var(--accent2)' : 'var(--danger)') : 'var(--muted)';
     tr.innerHTML = `
       <td style="font-weight:600">${r.pallet}</td>
       <td class="${lc}">${r.result||'—'}</td>
+      <td style="font-family:var(--mono);font-weight:600;color:${qtyColor}">${qty}</td>
       <td><span class="status-pill ${sc}">${r.status}</span></td>
       <td>${r.status==='OK'?`<button class="copy-btn" onclick="copySingle(this,'${safe}')">copy</button>`:''}</td>`;
     tbody.appendChild(tr);
@@ -641,6 +658,7 @@ function copyAllLots() {
 }
 
 function clearAll() {
+  lotQtyMap = {};
   document.getElementById('palletInput').value='';
   document.getElementById('badge-pallets').textContent='0 rows';
   document.getElementById('badge-pallets').className='badge';
