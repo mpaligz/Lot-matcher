@@ -145,6 +145,8 @@
     <button class="btn-sync" id="syncBtn" onclick="syncLots()">⟳ Sync Lots</button>
   </div>
 
+  document.getElementById('lotSearch').value = '';
+  
   <div class="grid">
     <div class="panel">
       <div class="panel-header">
@@ -160,7 +162,17 @@
         <span class="label">② BC Lots (Live)</span>
         <span class="badge" id="badge-lots">0 lots</span>
       </div>
-      <div id="lotPanel">
+      <div style="padding:10px 16px; border-bottom:1px solid var(--border);">
+  <input 
+    type="text" 
+    id="lotSearch" 
+    placeholder="Search lot or pallet..." 
+    style="width:100%; padding:8px; font-family:var(--mono); background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); outline:none;"
+    oninput="searchLots(this.value)"
+  />
+</div>
+
+<div id="lotPanel">
         <div class="lot-preview-panel">
           <span class="waiting">Syncing BC lot numbers automatically...<br><br>If this takes too long click <strong style="color:#5ba4d4">⟳ Sync Lots</strong> above.</span>
         </div>
@@ -370,6 +382,35 @@ function savePrefix(input) {
   localStorage.setItem('lotmatcher_prefixes', JSON.stringify(farmPrefixMap));
 }
 
+function searchLots(query) {
+  const panel = document.getElementById('lotPanel');
+
+  if (!parsedLots.length) {
+    panel.innerHTML = `
+      <div class="lot-preview-panel">
+        <span class="waiting">No lots loaded yet.</span>
+      </div>`;
+    return;
+  }
+
+  const q = query.toLowerCase().trim();
+
+  const filtered = parsedLots.filter(l =>
+    l.full.toLowerCase().includes(q) ||
+    l.pallet.toLowerCase().includes(q) ||
+    l.prefix.toLowerCase().includes(q)
+  );
+
+  const display = filtered.slice(0, 50).map(l => l.full).join('<br>');
+  const more = filtered.length > 50 ? `<br>… +${filtered.length - 50} more` : '';
+
+  panel.innerHTML = `
+    <div class="lot-preview-panel">
+      <span class="ok-label">🔎 ${filtered.length} match(es)</span>
+      <div class="lot-list">${display || 'No matches found'}${more}</div>
+    </div>`;
+}
+  
 // ── Match ─────────────────────────────────────────────────────────
 function runMatch() {
   parsedPallets = parsePalletInput(document.getElementById('palletInput').value);
