@@ -142,10 +142,10 @@
     <span class="sync-icon">⚡</span>
     <span class="sync-label">Live BC Lots — Lot Availability.xlsx</span>
     <span class="sync-status" id="syncStatus">Not synced</span>
-    <button class="btn-sync" id="syncBtn" onclick="syncLots()">⟳ Sync Lots</button>
+    <button class="btn-sync" id="syncBtn" onclick="syncLots(parsedLots = parseLotInput(lots.join('\n'));)">⟳ Sync Lots</button>
   </div>
 
-  document.getElementById('lotSearch').value = '';
+
   
   <div class="grid">
     <div class="panel">
@@ -292,6 +292,8 @@ async function syncLots() {
     parsedLots = parseLotInput(lots.join('\n'));
     setStatus('synced', `✓ ${lots.length} lots loaded`);
     document.getElementById('badge-lots').textContent = `${lots.length} lots`;
+    const searchInput = document.getElementById('lotSearch');
+if (searchInput) searchInput.value = '';
     document.getElementById('badge-lots').className = 'badge loaded';
 
     const preview = lots.slice(0,10).join('\n') + (lots.length > 10 ? `\n… +${lots.length-10} more` : '');
