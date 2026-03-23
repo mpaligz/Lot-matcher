@@ -254,12 +254,21 @@
       </thead>
       <tbody id="resultBody"></tbody>
     </table>
-    <div class="copy-all-wrap">
-      <div style="flex:1">
-        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:4px;letter-spacing:0.06em;text-transform:uppercase;">All Matched Lots — click to copy</div>
-        <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()">—</div>
+    <div class="copy-all-wrap" style="flex-direction:column;gap:14px;">
+      <div style="width:100%">
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity (tab-separated)</div>
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()" style="max-height:160px;font-size:0.72rem;">—</div>
+          <button class="btn btn-success" onclick="copyAllLots()" style="white-space:nowrap;flex-shrink:0;">⧉ Copy All<br><span style="font-size:0.65rem;font-weight:400">for BC paste</span></button>
+        </div>
       </div>
-      <button class="btn btn-success" onclick="copyAllLots()">⧉ Copy All to Clipboard</button>
+      <div style="width:100%">
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📄 Lots only (no quantity)</div>
+        <div style="display:flex;gap:10px;align-items:flex-start;">
+          <div class="big-copy-area" id="lotsOnlyBox" onclick="copyLotsOnly()" style="max-height:80px;font-size:0.72rem;">—</div>
+          <button class="btn btn-secondary" onclick="copyLotsOnly()" style="white-space:nowrap;flex-shrink:0;">⧉ Copy Lots<br><span style="font-size:0.65rem;font-weight:400">only</span></button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -629,12 +638,16 @@ function runMatch() {
       <td class="${lc}">${r.result||'—'}</td>
       <td style="font-family:var(--mono);font-weight:600;color:${qtyColor}">${qty}</td>
       <td><span class="status-pill ${sc}">${r.status}</span></td>
-      <td>${r.status==='OK'?`<button class="copy-btn" onclick="copySingle(this,'${safe}')">copy</button>`:''}</td>`;
+      <td>${r.status==='OK'?`<button class="copy-btn" onclick="copySingle(this,'${safe}\t${lotQtyMap[r.result]||0}')">copy row</button>`:''}</td>`;
     tbody.appendChild(tr);
   });
 
-  const okLots = rows.filter(r=>r.status==='OK').map(r=>r.result);
-  document.getElementById('allLotsBox').textContent = okLots.length ? okLots.join('\n') : 'No matched lots yet.';
+  const okRows = rows.filter(r=>r.status==='OK');
+  // Tab-separated for BC paste (Lot[TAB]Qty)
+  const bcPasteLines = okRows.map(r => `${r.result}\t${lotQtyMap[r.result]||0}`);
+  document.getElementById('allLotsBox').textContent = bcPasteLines.length ? bcPasteLines.join('\n') : 'No matched lots yet.';
+  // Lots only
+  document.getElementById('lotsOnlyBox').textContent = okRows.length ? okRows.map(r=>r.result).join('\n') : 'No matched lots yet.';
   document.getElementById('resultsPanel').style.display='block';
   document.getElementById('resultsPanel').scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -648,12 +661,19 @@ function copySingle(btn, text) {
 
 function copyAllLots() {
   const text = document.getElementById('allLotsBox').textContent;
-  if (text==='—'||text.includes('No matched')) return;
+  if (!text || text==='—' || text.includes('No matched')) return;
   navigator.clipboard.writeText(text).then(() => {
-    const btn = document.querySelector('.btn-success');
-    const orig = btn.textContent;
-    btn.textContent='✓ Copied!';
-    setTimeout(()=>btn.textContent=orig,1800);
+    const btns = document.querySelectorAll('.btn-success');
+    btns.forEach(btn => { const o=btn.innerHTML; btn.innerHTML='✓ Copied!'; setTimeout(()=>btn.innerHTML=o,1800); });
+  });
+}
+
+function copyLotsOnly() {
+  const text = document.getElementById('lotsOnlyBox').textContent;
+  if (!text || text==='—' || text.includes('No matched')) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btns = document.querySelectorAll('.btn-secondary');
+    btns.forEach(btn => { const o=btn.innerHTML; btn.innerHTML='✓ Copied!'; setTimeout(()=>btn.innerHTML=o,1800); });
   });
 }
 
@@ -664,6 +684,8 @@ function clearAll() {
   document.getElementById('badge-pallets').className='badge';
   document.getElementById('mappingSection').style.display='none';
   document.getElementById('resultsPanel').style.display='none';
+  if(document.getElementById('lotsOnlyBox')) document.getElementById('lotsOnlyBox').textContent='—';
+  if(document.getElementById('allLotsBox')) document.getElementById('allLotsBox').textContent='—';
   document.getElementById('lotSearch').value='';
   document.getElementById('searchResults').style.display='none';
   const dz = document.getElementById('imgDropZone');
