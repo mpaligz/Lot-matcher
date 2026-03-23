@@ -273,7 +273,7 @@ async function syncLots() {
 
     const lots = rows
       .map(r => String(r[lotKey] || '').trim())
-      .filter(v => /^\d{4}-.+/.test(v) && v.length > 5);
+      .filter(v => /^(\d{4}|[A-Z]{2,6})[ -].+/.test(v) && v.length > 4);
 
     if (!lots.length) throw new Error(`No BC lot numbers found. Column: "${lotKey}". Sheets: ${wb.SheetNames.join(', ')}`);
 
@@ -324,7 +324,7 @@ function parsePalletInput(raw) {
 
 function parseLotInput(raw) {
   return raw.trim().split(/\n/).map(l=>l.trim()).filter(Boolean).map(l => {
-    const m = l.match(/^(\d{4})-(.+)/);
+    const m = l.match(/^(\d{4}|[A-Z]{2,6})[ -](.+)/);
     return m ? { full: l.trim(), prefix: m[1], pallet: m[2] } : null;
   }).filter(Boolean);
 }
