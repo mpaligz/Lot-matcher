@@ -151,8 +151,8 @@
         <span class="label">① Cold Storage Pallets</span>
         <span class="badge" id="badge-pallets">0 rows</span>
       </div>
-      <textarea id="palletInput" placeholder="Paste pallet data from cold storage PDF.&#10;&#10;No need to include flock code, just pallet #:&#10;&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
-      <div class="note">Only include pallet ID from the PDF</div>
+      <textarea id="palletInput" placeholder="Paste pallet data from cold storage PDF.&#10;&#10;Tab-separated (pallet, date, farm) or just numbers:&#10;&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
+      <div class="note">Farm of origin is used to pick the right BC prefix when multiple lots match the same pallet.</div>
     </div>
 
     <div class="panel">
@@ -165,7 +165,7 @@
           <span class="waiting">Syncing BC lot numbers automatically...<br><br>If this takes too long click <strong style="color:#5ba4d4">⟳ Sync Lots</strong> above.</span>
         </div>
       </div>
-      <div class="note">Pulls from a Power BI with Live BC Lots</div>
+      <div class="note">Pulls from Lot Availability.xlsx on GitHub — no file uploading needed.</div>
     </div>
   </div>
 
@@ -273,7 +273,7 @@ async function syncLots() {
 
     const lots = rows
       .map(r => String(r[lotKey] || '').trim())
-      .filter(v => /^\d{4}-\d+/.test(v));
+      .filter(v => /^\d{4}-.+/.test(v) && v.length > 5);
 
     if (!lots.length) throw new Error(`No BC lot numbers found. Column: "${lotKey}". Sheets: ${wb.SheetNames.join(', ')}`);
 
@@ -324,7 +324,7 @@ function parsePalletInput(raw) {
 
 function parseLotInput(raw) {
   return raw.trim().split(/\n/).map(l=>l.trim()).filter(Boolean).map(l => {
-    const m = l.match(/^(\d{4})-(\d+)/);
+    const m = l.match(/^(\d{4})-(.+)/);
     return m ? { full: l.trim(), prefix: m[1], pallet: m[2] } : null;
   }).filter(Boolean);
 }
@@ -378,7 +378,12 @@ function runMatch() {
   if (!parsedLots.length) { alert('Please sync BC lots first — click ⟳ Sync Lots above.'); return; }
 
   const palletMap = {};
-  parsedLots.forEach(l => { (palletMap[l.pallet]=palletMap[l.pallet]||[]).push(l); });
+  // Build map using numeric portion of lot suffix for matching against cold storage pallet numbers
+  parsedLots.forEach(l => {
+    const numericSuffix = l.pallet.replace(/\D/g,''); // extract digits from suffix like "MARTAM 53406293" -> "53406293"
+    const keys = new Set([l.pallet, numericSuffix].filter(Boolean));
+    keys.forEach(k => { (palletMap[k]=palletMap[k]||[]).push(l); });
+  });
 
   let ok=0, warn=0, err=0;
   const rows = parsedPallets.map(p => {
