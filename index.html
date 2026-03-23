@@ -6,6 +6,7 @@
 <title>Lot Matcher — BC Item Tracking</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root {
     --bg: #0f1117; --surface: #181c27; --surface2: #1e2435; --border: #2a3045;
@@ -205,7 +206,7 @@
       </div>
       <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:4px 0 6px;">— or paste manually below —</div>
       <textarea id="palletInput" placeholder="Paste pallet numbers manually:&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
-      <div class="note"></div>
+      <div class="note">Drop a screenshot/photo of the cold storage sheet — AI extracts pallet numbers instantly. Or paste manually.</div>
     </div>
 
     <!-- BC Lots panel -->
@@ -219,7 +220,7 @@
           <span class="waiting">Syncing BC lot numbers automatically...<br><br>If this takes too long click <strong style="color:#5ba4d4">⟳ Sync Lots</strong> above.</span>
         </div>
       </div>
-      <div class="note"></div>
+      <div class="note">Pulls from Lot Availability.xlsx on GitHub — no file uploading needed.</div>
     </div>
   </div>
 
@@ -475,25 +476,18 @@ function processImage(file) {
     status.textContent = '⟳ Scanning for pallet numbers...';
 
     try {
-      const VISION_KEY = 'AIzaSyAZOO5jPRlQxikUnaYb8sHMraJ2dp4MyhA';
-      const response = await fetch(
-        `https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            requests: [{
-              image: { content: base64 },
-              features: [{ type: 'TEXT_DETECTION', maxResults: 1 }]
-            }]
-          })
+      // Run Tesseract OCR entirely in browser — no API key, no server, free forever
+      status.textContent = '⟳ Loading OCR engine...';
+      const { data: ocrData } = await Tesseract.recognize(file, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            status.textContent = `⟳ Scanning... ${Math.round(m.progress * 100)}%`;
+          }
         }
-      );
+      });
 
-      const data = await response.json();
-      if (data.error) throw new Error(data.error.message);
-      const rawText = data.responses?.[0]?.fullTextAnnotation?.text || '';
-      if (!rawText) throw new Error('No text found in image.');
+      const rawText = ocrData.text || '';
+      if (!rawText.trim()) throw new Error('No text found in image. Try a clearer screenshot.');
 
       // Extract all 6-8 digit numbers that look like pallet numbers
       const allNumbers = rawText.match(/\b\d{6,8}\b/g) || [];
