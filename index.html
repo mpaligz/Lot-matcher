@@ -424,38 +424,30 @@ function processImage(file) {
     status.textContent = '⟳ Scanning for pallet numbers...';
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: { type: 'base64', media_type: mediaType, data: base64 }
-              },
-              {
-                type: 'text',
-                text: `This is a cold storage pallet sheet. Extract ONLY the pallet numbers from this image. Pallet numbers are typically 7-digit numbers (e.g. 2353580, 2361684). Return ONLY a plain list of pallet numbers, one per line, no headers, no other text, no explanations. If you see no pallet numbers, return the word NONE.`
-              }
-            ]
-          }]
-        })
-      });
+      const VISION_KEY = 'AIzaSyAjYXQ9s8HEq501AkujUqO7QgoE15muH2M';
+      const response = await fetch(
+        `https://vision.googleapis.com/v1/images:annotate?key=${VISION_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requests: [{
+              image: { content: base64 },
+              features: [{ type: 'TEXT_DETECTION', maxResults: 1 }]
+            }]
+          })
+        }
+      );
 
       const data = await response.json();
-      const text = data.content?.[0]?.text?.trim() || '';
+      if (data.error) throw new Error(data.error.message);
+      const rawText = data.responses?.[0]?.fullTextAnnotation?.text || '';
+      if (!rawText) throw new Error('No text found in image.');
 
-      if (!text || text === 'NONE' || text.toLowerCase().includes('none')) {
-        throw new Error('No pallet numbers found in image.');
-      }
-
-      // Parse the returned numbers
-      const lines = text.split('\n').map(l => l.trim()).filter(l => /\d{5,}/.test(l));
-      const numbers = lines.map(l => l.replace(/\D/g,'')).filter(Boolean);
+      // Extract all 6-8 digit numbers that look like pallet numbers
+      const allNumbers = rawText.match(/\b\d{6,8}\b/g) || [];
+      // Deduplicate and filter
+      const numbers = [...new Set(allNumbers)].filter(n => n.length >= 6 && n.length <= 8);
 
       if (!numbers.length) throw new Error('Could not extract pallet numbers.');
 
