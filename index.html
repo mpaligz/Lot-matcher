@@ -154,6 +154,15 @@
   .tab-content { display:none; }
   .tab-content.active { display:block; }
 
+
+  .created-lots-table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.75rem; }
+  .created-lots-table th { text-align:left; padding:8px 12px; font-size:0.62rem; letter-spacing:0.07em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--border); background:var(--surface2); }
+  .created-lots-table td { padding:6px 10px; border-bottom:1px solid #1a1f2e; vertical-align:middle; }
+  .created-lots-table tr:last-child td { border-bottom:none; }
+  .created-lots-table tr:hover td { background:#1a1f2d; }
+  .date-input { background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text); font-family:var(--mono); font-size:0.73rem; padding:3px 8px; outline:none; width:100px; transition:border-color 0.15s; }
+  .date-input:focus { border-color:var(--accent); }
+  .date-input.uncertain { border-color:var(--warn); color:var(--warn); }
   /* ── Lot Creator ── */
   .creator-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
   .flock-input-wrap { padding:14px 16px; }
@@ -369,8 +378,8 @@
         <span class="label">③ Generated BC Lot Numbers</span>
         <span class="badge" id="badge-created">0 lots</span>
       </div>
-      <div class="created-lots-list" id="createdLotsList">
-        <div class="created-lot-empty">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>
+      <div class="created-lots-list" id="createdLotsList" style="padding:0">
+        <div class="created-lot-empty" style="padding:14px 16px">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>
       </div>
     </div>
 
@@ -614,24 +623,81 @@ async function processCreatorImage(file) {
       });
       const rawText = ocrData.text || '';
       if (!rawText.trim()) throw new Error('No text found. Try a clearer screenshot.');
-      // Split text into tokens and extract pure numeric ones in range 5-8 digits
-      const tokens = rawText.split(/[\s\r\n\t,;|]+/);
-      const allNumbers = tokens.map(t => t.trim()).filter(t => t.length >= 5 && t.length <= 20 && /\d/.test(t));
-      creatorPallets = [...new Set(allNumbers)];
+
+      // Parse lines to extract pallet ID and lay date
+      // Format per line: PALLETID  [EGG_TYPE]  DATE  (e.g. "CRITBAZ 50109830  ORG  3-17-26")
+      // EGG_TYPE (ORG, PRB, etc) is ignored
+      const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const palletDatePairs = [];
+      const seenPallets = new Set();
+      const dateRegex = /(\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4})/;
+      // Known egg type codes to skip
+      const skipTokens = new Set(['ORG','PRB','PRE','ORB','CAGE','FREE','RANGE','ORGANIC','CONVENTIONAL']);
+
+      lines.forEach((line, idx) => {
+        // Strip common noise chars
+        const clean = line.replace(/[|"'`_\[\]{}]/g, ' ').trim();
+
+        // Find date on this line or adjacent lines
+        let date = '';
+        const dateMatch = clean.match(dateRegex);
+        if (dateMatch) {
+          date = dateMatch[1];
+        } else {
+          // Check next line for a date
+          const nextLine = lines[idx+1] || '';
+          const nextMatch = nextLine.match(dateRegex);
+          if (nextMatch) date = nextMatch[1];
+        }
+
+        // Extract pallet: split by whitespace, skip egg type codes, find token with digits 5-20 chars
+        const tokens = clean.split(/\s+/);
+        const palletToken = tokens.find(t => {
+          const upper = t.toUpperCase().replace(/[^A-Z0-9]/g,'');
+          return t.length >= 5 && t.length <= 20
+            && /\d/.test(t)
+            && !dateRegex.test(t)
+            && !skipTokens.has(upper)
+            && upper.length >= 5;
+        });
+
+        if (palletToken && !seenPallets.has(palletToken)) {
+          seenPallets.add(palletToken);
+          const uncertain = !date;
+          palletDatePairs.push({ pallet: palletToken, date, uncertain });
+        }
+      });
+
+      // Fallback: if line-by-line failed, just grab numeric tokens
+      if (!palletDatePairs.length) {
+        const allTokens = rawText.split(/[\s\r\n\t,;|]+/);
+        const allNumbers = allTokens.map(t => t.trim()).filter(t => t.length >= 5 && t.length <= 20 && /\d/.test(t));
+        [...new Set(allNumbers)].forEach(p => palletDatePairs.push({ pallet: p, date: '', uncertain: true }));
+      }
+
+      creatorPallets = palletDatePairs.map(r => r.pallet);
+      window._creatorDates = palletDatePairs;
+
       if (!creatorPallets.length) throw new Error('No pallet numbers found in image.');
       dz.classList.remove('scanning');
       dz.classList.add('done');
       status.className = 'scan-status done';
-      status.textContent = '✓ ' + creatorPallets.length + ' pallet numbers found';
+      status.textContent = '✓ ' + creatorPallets.length + ' pallets found';
+
       // Merge scanned with any manually entered pallets
       const manualRaw = document.getElementById('creatorManualInput').value;
-      const manualTokens = manualRaw.split(/[\s\r\n\t,;|]+/);
-      const manualNums = [...new Set(manualTokens.map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 20))];
-      const merged = [...new Set([...creatorPallets, ...manualNums])];
-      window._creatorMerged = merged;
-      document.getElementById('badge-creator-pallets').textContent = merged.length + ' pallets';
+      const manualTokens2 = manualRaw.split(/[\s\r\n\t,;|]+/);
+      const manualNums = [...new Set(manualTokens2.map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 20 && t.length > 0))];
+      // Add manual pallets without dates
+      manualNums.forEach(p => {
+        if (!seenPallets.has(p)) { palletDatePairs.push({ pallet: p, date: '', uncertain: true }); seenPallets.add(p); }
+      });
+      window._creatorMerged = palletDatePairs.map(r => r.pallet);
+      window._creatorDates = palletDatePairs;
+
+      document.getElementById('badge-creator-pallets').textContent = palletDatePairs.length + ' pallets';
       document.getElementById('badge-creator-pallets').className = 'badge loaded';
-      rebuildCreatedLots(merged);
+      rebuildCreatedLots(palletDatePairs.map(r => r.pallet));
     } catch(err) {
       dz.classList.remove('scanning');
       dz.classList.add('error-state');
@@ -664,11 +730,12 @@ function rebuildCreatedLots(overridePallets) {
 }
 
 function copyCreatedLots() {
+  updateCreatedLotsBoxFromTable();
   const text = document.getElementById('createdLotsBox').textContent;
   if (!text || text === '—') return;
   navigator.clipboard.writeText(text).then(() => {
     const btns = document.querySelectorAll('#tabContent-creator .btn-success');
-    btns.forEach(btn => { const o=btn.textContent; btn.textContent='✓ Copied!'; setTimeout(()=>btn.textContent=o,1800); });
+    btns.forEach(btn => { const o=btn.innerHTML; btn.innerHTML='✓ Copied!'; setTimeout(()=>btn.innerHTML=o,1800); });
   });
 }
 
@@ -676,14 +743,17 @@ function onCreatorManualInput() {
   const raw = document.getElementById('creatorManualInput').value;
   const tokens = raw.split(/[\s\r\n\t,;|]+/);
   const manual = [...new Set(tokens.map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 20 && t.length > 0))];
-  // Merge with any scanned pallets, deduplicating
-  const all = [...new Set([...creatorPallets, ...manual])];
-  // Store merged set temporarily for rebuildCreatedLots
-  window._creatorMerged = all;
+  // Start with scanned pairs
+  const existingDates = window._creatorDates || [];
+  const seenPallets = new Set(existingDates.map(r => r.pallet));
+  const merged = [...existingDates];
+  manual.forEach(p => { if (!seenPallets.has(p)) { merged.push({ pallet: p, date: '', uncertain: true }); seenPallets.add(p); }});
+  window._creatorMerged = merged.map(r => r.pallet);
+  window._creatorDates = merged;
   const badge = document.getElementById('badge-creator-pallets');
-  badge.textContent = all.length + ' pallets';
-  badge.className = all.length ? 'badge loaded' : 'badge';
-  rebuildCreatedLots(all);
+  badge.textContent = merged.length + ' pallets';
+  badge.className = merged.length ? 'badge loaded' : 'badge';
+  rebuildCreatedLots(merged.map(r => r.pallet));
 }
 
 function clearCreator() {
@@ -697,6 +767,7 @@ function clearCreator() {
   document.getElementById('creatorFileInput').value = '';
   document.getElementById('creatorManualInput').value = '';
   window._creatorMerged = null;
+  window._creatorDates = null;
   document.getElementById('badge-creator-pallets').textContent = '0 pallets';
   document.getElementById('badge-creator-pallets').className = 'badge';
   document.getElementById('badge-created').textContent = '0 lots';
