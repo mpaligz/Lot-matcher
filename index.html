@@ -610,8 +610,10 @@ async function processCreatorImage(file) {
       });
       const rawText = ocrData.text || '';
       if (!rawText.trim()) throw new Error('No text found. Try a clearer screenshot.');
-      const allNumbers = rawText.match(/\b\d{5,8}\b/g) || [];
-      creatorPallets = [...new Set(allNumbers)].filter(n => n.length >= 5 && n.length <= 8);
+      // Split text into tokens and extract pure numeric ones in range 5-8 digits
+      const tokens = rawText.split(/[\s\r\n\t,;|]+/);
+      const allNumbers = tokens.map(t => t.replace(/[^0-9]/g, '')).filter(t => t.length >= 5 && t.length <= 8);
+      creatorPallets = [...new Set(allNumbers)];
       if (!creatorPallets.length) throw new Error('No pallet numbers found in image.');
       dz.classList.remove('scanning');
       dz.classList.add('done');
@@ -813,9 +815,9 @@ function processImage(file) {
       if (!rawText.trim()) throw new Error('No text found in image. Try a clearer screenshot.');
 
       // Extract all 6-8 digit numbers that look like pallet numbers
-      const allNumbers = rawText.match(/\b\d{5,8}\b/g) || [];
-      // Deduplicate and filter
-      const numbers = [...new Set(allNumbers)].filter(n => n.length >= 5 && n.length <= 8);
+      // Split text into tokens and extract pure numeric ones in range 5-8 digits
+      const tokens = rawText.split(/[\s\r\n\t,;|]+/);
+      const numbers = [...new Set(tokens.map(t => t.replace(/[^0-9]/g, '')).filter(t => t.length >= 5 && t.length <= 8))];
 
       if (!numbers.length) throw new Error('Could not extract pallet numbers.');
 
