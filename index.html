@@ -341,12 +341,13 @@
         </div>
       </div>
 
-      <!-- BOL image drop -->
+      <!-- BOL image drop + manual input -->
       <div class="panel">
         <div class="panel-header">
-          <span class="label">② Drop BOL Screenshot</span>
+          <span class="label">② Pallet IDs</span>
           <span class="badge" id="badge-creator-pallets">0 pallets</span>
         </div>
+        <!-- Image drop zone -->
         <div class="img-drop-zone" id="creatorDropZone"
           onclick="document.getElementById('creatorFileInput').click()"
           ondragover="handleImgDragOver(event,'creatorDropZone')" ondragleave="handleImgDragLeave('creatorDropZone')" ondrop="handleCreatorDrop(event)">
@@ -356,6 +357,9 @@
           <img id="creatorImgPreview" class="img-preview"/>
           <div class="scan-status" id="creatorScanStatus"></div>
         </div>
+        <!-- Manual input -->
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:6px 0 4px;">— or type / paste manually below —</div>
+        <textarea id="creatorManualInput" placeholder="Enter pallet IDs manually, one per line:&#10;2353580&#10;2361684&#10;2361695&#10;..." style="height:120px;" oninput="onCreatorManualInput()"></textarea>
       </div>
     </div>
 
@@ -366,7 +370,7 @@
         <span class="badge" id="badge-created">0 lots</span>
       </div>
       <div class="created-lots-list" id="createdLotsList">
-        <div class="created-lot-empty">Enter a flock code and drop a BOL screenshot to generate lot numbers.</div>
+        <div class="created-lot-empty">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>
       </div>
     </div>
 
@@ -612,16 +616,22 @@ async function processCreatorImage(file) {
       if (!rawText.trim()) throw new Error('No text found. Try a clearer screenshot.');
       // Split text into tokens and extract pure numeric ones in range 5-8 digits
       const tokens = rawText.split(/[\s\r\n\t,;|]+/);
-      const allNumbers = tokens.map(t => t.replace(/[^0-9]/g, '')).filter(t => t.length >= 5 && t.length <= 8);
+      const allNumbers = tokens.map(t => t.trim()).filter(t => t.length >= 5 && t.length <= 20 && /\d/.test(t));
       creatorPallets = [...new Set(allNumbers)];
       if (!creatorPallets.length) throw new Error('No pallet numbers found in image.');
       dz.classList.remove('scanning');
       dz.classList.add('done');
       status.className = 'scan-status done';
       status.textContent = '✓ ' + creatorPallets.length + ' pallet numbers found';
-      document.getElementById('badge-creator-pallets').textContent = creatorPallets.length + ' pallets';
+      // Merge scanned with any manually entered pallets
+      const manualRaw = document.getElementById('creatorManualInput').value;
+      const manualTokens = manualRaw.split(/[\s\r\n\t,;|]+/);
+      const manualNums = [...new Set(manualTokens.map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 20))];
+      const merged = [...new Set([...creatorPallets, ...manualNums])];
+      window._creatorMerged = merged;
+      document.getElementById('badge-creator-pallets').textContent = merged.length + ' pallets';
       document.getElementById('badge-creator-pallets').className = 'badge loaded';
-      rebuildCreatedLots();
+      rebuildCreatedLots(merged);
     } catch(err) {
       dz.classList.remove('scanning');
       dz.classList.add('error-state');
@@ -632,16 +642,18 @@ async function processCreatorImage(file) {
   reader.readAsDataURL(file);
 }
 
-function rebuildCreatedLots() {
+function rebuildCreatedLots(overridePallets) {
   const list = document.getElementById('createdLotsList');
   const box = document.getElementById('createdLotsBox');
   const badge = document.getElementById('badge-created');
-  if (!creatorFlockCode || !creatorPallets.length) {
-    list.innerHTML = '<div class="created-lot-empty">Enter a flock code and drop a BOL screenshot to generate lot numbers.</div>';
+  // Use override (merged scanned+manual) or fallback to scanned only
+  const activePallets = overridePallets || window._creatorMerged || creatorPallets;
+  if (!creatorFlockCode || !activePallets.length) {
+    list.innerHTML = '<div class="created-lot-empty">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>';
     badge.textContent = '0 lots'; badge.className = 'badge';
     box.textContent = '—'; return;
   }
-  const lots = creatorPallets.map(p => creatorFlockCode + '-' + p);
+  const lots = activePallets.map(p => creatorFlockCode + '-' + p);
   badge.textContent = lots.length + ' lots'; badge.className = 'badge loaded';
   list.innerHTML = lots.map(function(l) {
     var safe = l.replace(/'/g, "&#39;");
@@ -660,6 +672,20 @@ function copyCreatedLots() {
   });
 }
 
+function onCreatorManualInput() {
+  const raw = document.getElementById('creatorManualInput').value;
+  const tokens = raw.split(/[\s\r\n\t,;|]+/);
+  const manual = [...new Set(tokens.map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 20 && t.length > 0))];
+  // Merge with any scanned pallets, deduplicating
+  const all = [...new Set([...creatorPallets, ...manual])];
+  // Store merged set temporarily for rebuildCreatedLots
+  window._creatorMerged = all;
+  const badge = document.getElementById('badge-creator-pallets');
+  badge.textContent = all.length + ' pallets';
+  badge.className = all.length ? 'badge loaded' : 'badge';
+  rebuildCreatedLots(all);
+}
+
 function clearCreator() {
   creatorPallets = []; creatorFlockCode = '';
   document.getElementById('flockInput').value = '';
@@ -669,11 +695,13 @@ function clearCreator() {
   document.getElementById('creatorImgPreview').style.display = 'none';
   document.getElementById('creatorScanStatus').textContent = '';
   document.getElementById('creatorFileInput').value = '';
+  document.getElementById('creatorManualInput').value = '';
+  window._creatorMerged = null;
   document.getElementById('badge-creator-pallets').textContent = '0 pallets';
   document.getElementById('badge-creator-pallets').className = 'badge';
   document.getElementById('badge-created').textContent = '0 lots';
   document.getElementById('badge-created').className = 'badge';
-  document.getElementById('createdLotsList').innerHTML = '<div class="created-lot-empty">Enter a flock code and drop a BOL screenshot to generate lot numbers.</div>';
+  document.getElementById('createdLotsList').innerHTML = '<div class="created-lot-empty">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>';
   document.getElementById('createdLotsBox').textContent = '—';
   document.getElementById('creatorCopyBox').style.display = 'none';
   document.getElementById('creatorDropZone').classList.remove('done','error-state','scanning');
