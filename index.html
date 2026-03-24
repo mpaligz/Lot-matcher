@@ -206,7 +206,7 @@
       </div>
       <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:4px 0 6px;">— or paste manually below —</div>
       <textarea id="palletInput" placeholder="Paste pallet numbers manually:&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
-      <div class="note">Drop a screenshot/photo of the cold storage sheet — AI extracts pallet numbers instantly. Or paste manually.</div>
+      <div class="note"></div>
     </div>
 
     <!-- BC Lots panel -->
@@ -220,7 +220,7 @@
           <span class="waiting">Syncing BC lot numbers automatically...<br><br>If this takes too long click <strong style="color:#5ba4d4">⟳ Sync Lots</strong> above.</span>
         </div>
       </div>
-      <div class="note">Pulls from Lot Availability.xlsx on GitHub — no file uploading needed.</div>
+      <div class="note"></div>
     </div>
   </div>
 
@@ -257,7 +257,7 @@
     </table>
     <div class="copy-all-wrap" style="flex-direction:column;gap:14px;">
       <div style="width:100%">
-        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity (tab-separated)</div>
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity</div>
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()" style="max-height:160px;font-size:0.72rem;">—</div>
           <button class="btn btn-success" onclick="copyAllLots()" style="white-space:nowrap;flex-shrink:0;">⧉ Copy All<br><span style="font-size:0.65rem;font-weight:400">for BC paste</span></button>
