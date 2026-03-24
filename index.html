@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lot Matcher — BC Item Tracking</title>
+<title>Happy Egg Lot Matcher</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
@@ -153,8 +153,8 @@
 <!-- ── Password Gate ── -->
 <div id="gate">
   <div class="gate-box">
-    <div class="gate-logo">// LOT MATCHER</div>
-    <div class="gate-sub">Happy Egg Co.</div>
+    <div class="gate-logo">Happy Egg Lot Matcher</div>
+    <div class="gate-sub">Business Central · Happy Egg Co.</div>
     <label class="gate-label">Password</label>
     <input type="password" class="gate-input" id="pwInput" placeholder="••••••••••" onkeydown="if(event.key==='Enter')checkPassword()"/>
     <button class="gate-btn" onclick="checkPassword()">Enter</button>
@@ -166,10 +166,22 @@
 <!-- ── Main App ── -->
 <div id="app">
   <header>
-    <h1>// LOT MATCHER</h1>
-    <span>Business Central · Item Tracking Lines</span>
+    <h1>Happy Egg Lot Matcher</h1>
+    <span>Business Central · Happy Egg Co.</span>
     <button class="signout" onclick="signOut()">Sign out</button>
   </header>
+
+  <!-- Company Switcher -->
+  <div id="companySwitcher" style="display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content;">
+    <button id="btn-HE SOUTH" onclick="switchCompany('HE SOUTH')"
+      style="padding:10px 24px;font-family:var(--mono);font-size:0.78rem;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;letter-spacing:0.04em;">
+      HE SOUTH
+    </button>
+    <button id="btn-HE NORTH" onclick="switchCompany('HE NORTH')"
+      style="padding:10px 24px;font-family:var(--mono);font-size:0.78rem;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;letter-spacing:0.04em;border-left:1px solid var(--border);">
+      HE NORTH
+    </button>
+  </div>
 
   <!-- Sync bar -->
   <div class="sync-bar">
@@ -206,7 +218,6 @@
       </div>
       <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:4px 0 6px;">— or paste manually below —</div>
       <textarea id="palletInput" placeholder="Paste pallet numbers manually:&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
-      <div class="note"></div>
     </div>
 
     <!-- BC Lots panel -->
@@ -220,7 +231,6 @@
           <span class="waiting">Syncing BC lot numbers automatically...<br><br>If this takes too long click <strong style="color:#5ba4d4">⟳ Sync Lots</strong> above.</span>
         </div>
       </div>
-      <div class="note"></div>
     </div>
   </div>
 
@@ -257,7 +267,7 @@
     </table>
     <div class="copy-all-wrap" style="flex-direction:column;gap:14px;">
       <div style="width:100%">
-        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity</div>
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity (tab-separated)</div>
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()" style="max-height:160px;font-size:0.72rem;">—</div>
           <button class="btn btn-success" onclick="copyAllLots()" style="white-space:nowrap;flex-shrink:0;">⧉ Copy All<br><span style="font-size:0.65rem;font-weight:400">for BC paste</span></button>
@@ -276,16 +286,35 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────
-const EXCEL_URL = 'https://raw.githubusercontent.com/mpaligz/lot-matcher/main/Lot%20Availability.xlsx';
-const SHEET_NAME = 'Lot Availability';
-const COL_HEADER = 'Row Labels';
 const CORRECT_PASSWORD = 'Heritage1!';
+const COMPANIES = {
+  'HE SOUTH': {
+    excelUrl: 'https://raw.githubusercontent.com/mpaligz/lot-matcher/main/Lot%20Availability.xlsx',
+    sheetName: 'Lot Availability',
+    colHeader: 'Row Labels',
+    color: '#3b82f6'
+  },
+  'HE NORTH': {
+    excelUrl: 'https://raw.githubusercontent.com/mpaligz/lot-matcher/main/HE%20North%20Lot%20Availability1.xlsx',
+    sheetName: 'Lot Availability',
+    colHeader: 'Row Labels',
+    color: '#10b981'
+  }
+};
+let activeCompany = localStorage.getItem('lm_company') || 'HE SOUTH';
 
 // ── State ─────────────────────────────────────────────────────────
 let parsedLots = [];
 let parsedPallets = [];
 let lotQtyMap = {};
-let farmPrefixMap = JSON.parse(localStorage.getItem('lotmatcher_prefixes') || '{}');
+
+function getFarmPrefixMap() {
+  return JSON.parse(localStorage.getItem(`lotmatcher_prefixes_${activeCompany}`) || '{}');
+}
+function saveFarmPrefixMap(map) {
+  localStorage.setItem(`lotmatcher_prefixes_${activeCompany}`, JSON.stringify(map));
+}
+let farmPrefixMap = getFarmPrefixMap();
 
 // ── Auth ──────────────────────────────────────────────────────────
 function checkPassword() {
@@ -294,6 +323,7 @@ function checkPassword() {
     sessionStorage.setItem('lm_auth', '1');
     document.getElementById('gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
+    updateCompanyUI();
     syncLots();
   } else {
     const inp = document.getElementById('pwInput');
@@ -314,7 +344,45 @@ function signOut() {
 if (sessionStorage.getItem('lm_auth') === '1') {
   document.getElementById('gate').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  updateCompanyUI();
   syncLots();
+}
+
+// ── Company Switcher ──────────────────────────────────────────────
+function switchCompany(name) {
+  activeCompany = name;
+  localStorage.setItem('lm_company', name);
+  farmPrefixMap = getFarmPrefixMap();
+  updateCompanyUI();
+  parsedLots = [];
+  lotQtyMap = {};
+  parsedPallets = [];
+  document.getElementById('palletInput').value = '';
+  document.getElementById('badge-pallets').textContent = '0 rows';
+  document.getElementById('badge-pallets').className = 'badge';
+  document.getElementById('mappingSection').style.display = 'none';
+  document.getElementById('resultsPanel').style.display = 'none';
+  document.getElementById('lotPanel').innerHTML = `<div class="lot-preview-panel"><span class="waiting">Click <strong style="color:#5ba4d4">⟳ Sync Lots</strong> to load ${name} inventory.</span></div>`;
+  document.getElementById('badge-lots').textContent = '0 lots';
+  document.getElementById('badge-lots').className = 'badge';
+  setStatus('', 'Not synced');
+  syncLots();
+}
+
+function updateCompanyUI() {
+  const cfg = COMPANIES[activeCompany];
+  // Update switcher button styles
+  Object.keys(COMPANIES).forEach(name => {
+    const btn = document.getElementById(`btn-${name}`);
+    if (btn) {
+      const isActive = name === activeCompany;
+      btn.style.background = isActive ? COMPANIES[name].color : 'var(--surface2)';
+      btn.style.color = isActive ? '#fff' : 'var(--muted)';
+    }
+  });
+  // Update sync bar label
+  const label = document.querySelector('.sync-label');
+  if (label) label.textContent = `Live BC Lots — ${activeCompany}`;
 }
 
 // ── Sync ──────────────────────────────────────────────────────────
@@ -322,15 +390,16 @@ async function syncLots() {
   document.getElementById('syncBtn').disabled = true;
   setStatus('syncing', '⟳ Fetching lots...');
   try {
-    const res = await fetch(EXCEL_URL + '?t=' + Date.now());
+    const cfg = COMPANIES[activeCompany];
+    const res = await fetch(cfg.excelUrl + '?t=' + Date.now());
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = await res.arrayBuffer();
     const wb = XLSX.read(buf, { type: 'array' });
-    let sheet = wb.Sheets[SHEET_NAME] || wb.Sheets[wb.SheetNames[0]];
+    let sheet = wb.Sheets[cfg.sheetName] || wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
     if (!rows.length) throw new Error('No data found in file.');
     const keys = Object.keys(rows[0]);
-    const lotKey = keys.find(k => k === COL_HEADER)
+    const lotKey = keys.find(k => k === cfg.colHeader)
       || keys.find(k => k.toLowerCase().includes('lot') || k.toLowerCase().includes('row'))
       || keys[0];
     const qtyKey = keys.find(k => k.toLowerCase().includes('quantity') || k.toLowerCase().includes('qty') || k.toLowerCase().includes('remaining'))
@@ -582,7 +651,7 @@ function savePrefix(input) {
   input.value = val;
   if (val) { farmPrefixMap[input.dataset.key]=val; input.className='filled'; }
   else { delete farmPrefixMap[input.dataset.key]; input.className=''; }
-  localStorage.setItem('lotmatcher_prefixes', JSON.stringify(farmPrefixMap));
+  saveFarmPrefixMap(farmPrefixMap);
 }
 
 // ── Match ─────────────────────────────────────────────────────────
