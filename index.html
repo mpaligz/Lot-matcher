@@ -145,7 +145,33 @@
   .big-copy-area { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; font-family: var(--mono); font-size: 0.75rem; color: var(--accent2); flex: 1; min-width: 200px; word-break: break-all; line-height: 1.8; max-height: 120px; overflow-y: auto; cursor: pointer; }
   .big-copy-area:hover { border-color: var(--accent2); }
 
-  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+
+  /* ── Tab Navigation ── */
+  .tab-nav { display:flex; gap:0; margin-bottom:24px; border:1px solid var(--border); border-radius:8px; overflow:hidden; width:fit-content; }
+  .tab-btn { padding:10px 28px; font-family:var(--mono); font-size:0.78rem; font-weight:600; border:none; cursor:pointer; transition:all 0.15s; letter-spacing:0.04em; background:var(--surface2); color:var(--muted); }
+  .tab-btn:not(:first-child) { border-left:1px solid var(--border); }
+  .tab-btn.active { background:var(--accent); color:#fff; }
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  /* ── Lot Creator ── */
+  .creator-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
+  .flock-input-wrap { padding:14px 16px; }
+  .flock-label { font-family:var(--mono); font-size:0.68rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--muted); display:block; margin-bottom:8px; }
+  .flock-input { width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--accent2); font-family:var(--mono); font-size:1.6rem; font-weight:700; padding:12px 14px; outline:none; text-align:center; letter-spacing:0.15em; text-transform:uppercase; transition:border-color 0.15s; }
+  .flock-input:focus { border-color:var(--accent2); }
+  .flock-preview { margin-top:10px; font-family:var(--mono); font-size:0.72rem; color:var(--muted); text-align:center; min-height:20px; }
+  .flock-preview span { color:var(--accent2); font-weight:600; }
+  .created-lots-panel { background:var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:24px; }
+  .created-lots-header { padding:12px 16px; background:var(--surface2); border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+  .created-lots-header .label { font-family:var(--mono); font-size:0.7rem; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); }
+  .created-lots-list { padding:14px 16px; font-family:var(--mono); font-size:0.75rem; max-height:260px; overflow-y:auto; }
+  .created-lot-row { display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-radius:4px; gap:12px; }
+  .created-lot-row:hover { background:var(--surface2); }
+  .created-lot-val { color:var(--accent2); font-weight:600; }
+  .created-lot-empty { color:var(--muted); font-size:0.72rem; padding:8px; }
+
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } .creator-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -171,17 +197,28 @@
     <button class="signout" onclick="signOut()">Sign out</button>
   </header>
 
-  <!-- Company Switcher -->
-  <div id="companySwitcher" style="display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:8px;overflow:hidden;width:fit-content;">
-    <button id="btn-HE SOUTH" onclick="switchCompany('HE SOUTH')"
-      style="padding:10px 24px;font-family:var(--mono);font-size:0.78rem;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;letter-spacing:0.04em;">
-      HE SOUTH
-    </button>
-    <button id="btn-HE NORTH" onclick="switchCompany('HE NORTH')"
-      style="padding:10px 24px;font-family:var(--mono);font-size:0.78rem;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;letter-spacing:0.04em;border-left:1px solid var(--border);">
-      HE NORTH
-    </button>
+  <!-- Top controls row: Company switcher + Tab nav -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px;">
+    <!-- Company Switcher -->
+    <div id="companySwitcher" style="display:flex;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+      <button id="btn-HE SOUTH" onclick="switchCompany('HE SOUTH')"
+        style="padding:10px 24px;font-family:var(--mono);font-size:0.78rem;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;letter-spacing:0.04em;">
+        HE SOUTH
+      </button>
+      <button id="btn-HE NORTH" onclick="switchCompany('HE NORTH')"
+        style="padding:10px 24px;font-family:var(--mono);font-size:0.78rem;font-weight:600;border:none;cursor:pointer;transition:all 0.15s;letter-spacing:0.04em;border-left:1px solid var(--border);">
+        HE NORTH
+      </button>
+    </div>
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn active" id="tab-matcher" onclick="switchTab('matcher')">🔍 Lot Matcher</button>
+      <button class="tab-btn" id="tab-creator" onclick="switchTab('creator')">✚ Lot Creator</button>
+    </div>
   </div>
+
+  <!-- ── TAB: LOT MATCHER ── -->
+  <div class="tab-content active" id="tabContent-matcher">
 
   <!-- Sync bar -->
   <div class="sync-bar">
@@ -209,7 +246,7 @@
       <!-- Image drop zone -->
       <div class="img-drop-zone" id="imgDropZone"
         onclick="document.getElementById('imgFileInput').click()"
-        ondragover="handleImgDragOver(event)" ondragleave="handleImgDragLeave(event)" ondrop="handleImgDrop(event)">
+        ondragover="handleImgDragOver(event,'imgDropZone')" ondragleave="handleImgDragLeave('imgDropZone')" ondrop="handleImgDrop(event)">
         <input type="file" id="imgFileInput" accept="image/*" onchange="handleImgFile(event)">
         <span style="font-size:1.4rem">📷</span>
         <div class="img-drop-label"><strong>Drop screenshot or photo here</strong><br>or press <strong style="color:var(--accent)">Ctrl+V</strong> / <strong style="color:var(--accent)">Cmd+V</strong> to paste from clipboard<br><span style="font-size:0.65rem;color:var(--muted)">AI reads pallet numbers automatically</span></div>
@@ -267,7 +304,7 @@
     </table>
     <div class="copy-all-wrap" style="flex-direction:column;gap:14px;">
       <div style="width:100%">
-        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity</div>
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity (tab-separated)</div>
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()" style="max-height:160px;font-size:0.72rem;">—</div>
           <button class="btn btn-success" onclick="copyAllLots()" style="white-space:nowrap;flex-shrink:0;">⧉ Copy All<br><span style="font-size:0.65rem;font-weight:400">for BC paste</span></button>
@@ -282,7 +319,71 @@
       </div>
     </div>
   </div>
-</div>
+  </div><!-- end tab-matcher -->
+
+  <!-- ── TAB: LOT CREATOR ── -->
+  <div class="tab-content" id="tabContent-creator">
+
+    <div class="creator-grid">
+      <!-- Flock code input -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="label">① Enter Flock Code</span>
+          <span class="badge" id="flockBadge">No code</span>
+        </div>
+        <div class="flock-input-wrap">
+          <label class="flock-label">Flock / Prefix Code (up to 4 characters)</label>
+          <input type="text" class="flock-input" id="flockInput" maxlength="4"
+            placeholder="3024"
+            oninput="onFlockInput()"
+            autocomplete="off"/>
+          <div class="flock-preview" id="flockPreview">Enter a flock code to preview lot format</div>
+        </div>
+      </div>
+
+      <!-- BOL image drop -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="label">② Drop BOL Screenshot</span>
+          <span class="badge" id="badge-creator-pallets">0 pallets</span>
+        </div>
+        <div class="img-drop-zone" id="creatorDropZone"
+          onclick="document.getElementById('creatorFileInput').click()"
+          ondragover="handleImgDragOver(event,'creatorDropZone')" ondragleave="handleImgDragLeave('creatorDropZone')" ondrop="handleCreatorDrop(event)">
+          <input type="file" id="creatorFileInput" accept="image/*" onchange="handleCreatorFile(event)">
+          <span style="font-size:1.4rem">📋</span>
+          <div class="img-drop-label"><strong>Drop BOL screenshot here</strong><br>or press <strong style="color:var(--accent)">Ctrl+V</strong> to paste</div>
+          <img id="creatorImgPreview" class="img-preview"/>
+          <div class="scan-status" id="creatorScanStatus"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generated lots -->
+    <div class="created-lots-panel">
+      <div class="created-lots-header">
+        <span class="label">③ Generated BC Lot Numbers</span>
+        <span class="badge" id="badge-created">0 lots</span>
+      </div>
+      <div class="created-lots-list" id="createdLotsList">
+        <div class="created-lot-empty">Enter a flock code and drop a BOL screenshot to generate lot numbers.</div>
+      </div>
+    </div>
+
+    <!-- Copy actions -->
+    <div class="actions">
+      <button class="btn btn-success" onclick="copyCreatedLots()">⧉ Copy All for BC Paste</button>
+      <button class="btn btn-secondary" onclick="clearCreator()">✕ Clear</button>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:24px;" id="creatorCopyBox" style="display:none">
+      <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Ready to paste into BC</div>
+      <div class="big-copy-area" id="createdLotsBox" onclick="copyCreatedLots()">—</div>
+    </div>
+
+  </div><!-- end tab-creator -->
+
+</div><!-- end app -->
 
 <script>
 // ── Config ────────────────────────────────────────────────────────
@@ -443,6 +544,159 @@ function setStatus(type, msg) {
 }
 
 
+// ── Tab Switching ─────────────────────────────────────────────────
+function switchTab(tab) {
+  ['matcher','creator'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+    document.getElementById('tabContent-'+t).classList.toggle('active', t===tab);
+  });
+  document.querySelector('.sync-bar').style.display = tab==='matcher' ? 'flex' : 'none';
+  document.querySelector('.search-bar').style.display = tab==='matcher' ? 'flex' : 'none';
+  document.getElementById('searchResults').style.display = 'none';
+}
+
+// ── Lot Creator ───────────────────────────────────────────────────
+let creatorPallets = [];
+let creatorFlockCode = '';
+
+function onFlockInput() {
+  const val = document.getElementById('flockInput').value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
+  document.getElementById('flockInput').value = val;
+  creatorFlockCode = val;
+  const badge = document.getElementById('flockBadge');
+  const preview = document.getElementById('flockPreview');
+  if (val) {
+    badge.textContent = val;
+    badge.className = 'badge loaded';
+    preview.innerHTML = 'Format: <span style="color:var(--accent2);font-weight:600">' + val + '-PALLETID</span> &nbsp; e.g. <span style="color:var(--accent2)">' + val + '-2361685</span>';
+  } else {
+    badge.textContent = 'No code';
+    badge.className = 'badge';
+    preview.textContent = 'Enter a flock code to preview lot format';
+  }
+  rebuildCreatedLots();
+}
+
+function handleCreatorDrop(e) {
+  e.preventDefault();
+  document.getElementById('creatorDropZone').classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) processCreatorImage(file);
+}
+function handleCreatorFile(e) {
+  const file = e.target.files[0];
+  if (file) processCreatorImage(file);
+}
+
+async function processCreatorImage(file) {
+  const reader = new FileReader();
+  reader.onload = async function(ev) {
+    const preview = document.getElementById('creatorImgPreview');
+    preview.src = ev.target.result;
+    preview.style.display = 'block';
+    const dz = document.getElementById('creatorDropZone');
+    const status = document.getElementById('creatorScanStatus');
+    dz.classList.remove('done','error-state');
+    dz.classList.add('scanning');
+    status.className = 'scan-status scanning';
+    status.textContent = '⟳ Loading OCR engine...';
+    try {
+      const { data: ocrData } = await Tesseract.recognize(file, 'eng', {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            status.textContent = '⟳ Scanning... ' + Math.round(m.progress*100) + '%';
+          }
+        }
+      });
+      const rawText = ocrData.text || '';
+      if (!rawText.trim()) throw new Error('No text found. Try a clearer screenshot.');
+      const allNumbers = rawText.match(/\d{6,8}/g) || [];
+      creatorPallets = [...new Set(allNumbers)].filter(n => n.length >= 6 && n.length <= 8);
+      if (!creatorPallets.length) throw new Error('No pallet numbers found in image.');
+      dz.classList.remove('scanning');
+      dz.classList.add('done');
+      status.className = 'scan-status done';
+      status.textContent = '✓ ' + creatorPallets.length + ' pallet numbers found';
+      document.getElementById('badge-creator-pallets').textContent = creatorPallets.length + ' pallets';
+      document.getElementById('badge-creator-pallets').className = 'badge loaded';
+      rebuildCreatedLots();
+    } catch(err) {
+      dz.classList.remove('scanning');
+      dz.classList.add('error-state');
+      status.className = 'scan-status error';
+      status.textContent = '✕ ' + (err.message || 'Scan failed');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function rebuildCreatedLots() {
+  const list = document.getElementById('createdLotsList');
+  const box = document.getElementById('createdLotsBox');
+  const badge = document.getElementById('badge-created');
+  if (!creatorFlockCode || !creatorPallets.length) {
+    list.innerHTML = '<div class="created-lot-empty">Enter a flock code and drop a BOL screenshot to generate lot numbers.</div>';
+    badge.textContent = '0 lots'; badge.className = 'badge';
+    box.textContent = '—'; return;
+  }
+  const lots = creatorPallets.map(p => creatorFlockCode + '-' + p);
+  badge.textContent = lots.length + ' lots'; badge.className = 'badge loaded';
+  list.innerHTML = lots.map(function(l) {
+    var safe = l.replace(/'/g, "&#39;");
+    return '<div class="created-lot-row"><span class="created-lot-val">' + l + '</span><button class="copy-btn" onclick="copySingle(this,\'' + safe + '\')">copy</button></div>';
+  }).join('');
+  box.textContent = lots.join('\n');
+  document.getElementById('creatorCopyBox').style.display = 'block';
+}
+
+function copyCreatedLots() {
+  const text = document.getElementById('createdLotsBox').textContent;
+  if (!text || text === '—') return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btns = document.querySelectorAll('#tabContent-creator .btn-success');
+    btns.forEach(btn => { const o=btn.textContent; btn.textContent='✓ Copied!'; setTimeout(()=>btn.textContent=o,1800); });
+  });
+}
+
+function clearCreator() {
+  creatorPallets = []; creatorFlockCode = '';
+  document.getElementById('flockInput').value = '';
+  document.getElementById('flockBadge').textContent = 'No code';
+  document.getElementById('flockBadge').className = 'badge';
+  document.getElementById('flockPreview').textContent = 'Enter a flock code to preview lot format';
+  document.getElementById('creatorImgPreview').style.display = 'none';
+  document.getElementById('creatorScanStatus').textContent = '';
+  document.getElementById('creatorFileInput').value = '';
+  document.getElementById('badge-creator-pallets').textContent = '0 pallets';
+  document.getElementById('badge-creator-pallets').className = 'badge';
+  document.getElementById('badge-created').textContent = '0 lots';
+  document.getElementById('badge-created').className = 'badge';
+  document.getElementById('createdLotsList').innerHTML = '<div class="created-lot-empty">Enter a flock code and drop a BOL screenshot to generate lot numbers.</div>';
+  document.getElementById('createdLotsBox').textContent = '—';
+  document.getElementById('creatorCopyBox').style.display = 'none';
+  document.getElementById('creatorDropZone').classList.remove('done','error-state','scanning');
+}
+
+// Handle Ctrl+V paste on creator tab
+document.addEventListener('paste', function(e) {
+  const creatorActive = document.getElementById('tabContent-creator').classList.contains('active');
+  if (!creatorActive) return;
+  if (document.getElementById('app').style.display === 'none') return;
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.id !== 'flockInput') return;
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (let i=0; i<items.length; i++) {
+    if (items[i].type.startsWith('image/')) {
+      e.preventDefault();
+      const file = items[i].getAsFile();
+      if (file) { processCreatorImage(file); }
+      break;
+    }
+  }
+});
+
+
 // ── Paste from clipboard ──────────────────────────────────────────
 document.addEventListener('paste', function(e) {
   // Only handle if app is visible and no text input is focused
@@ -513,8 +767,8 @@ document.addEventListener('click', e => {
 });
 
 // ── Image OCR via Claude API ──────────────────────────────────────
-function handleImgDragOver(e) { e.preventDefault(); document.getElementById('imgDropZone').classList.add('dragover'); }
-function handleImgDragLeave() { document.getElementById('imgDropZone').classList.remove('dragover'); }
+function handleImgDragOver(e, zoneId) { e.preventDefault(); document.getElementById(zoneId||'imgDropZone').classList.add('dragover'); }
+function handleImgDragLeave(zoneId) { document.getElementById(zoneId||'imgDropZone').classList.remove('dragover'); }
 function handleImgDrop(e) {
   e.preventDefault();
   document.getElementById('imgDropZone').classList.remove('dragover');
