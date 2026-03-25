@@ -180,7 +180,23 @@
   .created-lot-val { color:var(--accent2); font-weight:600; }
   .created-lot-empty { color:var(--muted); font-size:0.72rem; padding:8px; }
 
-  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } .creator-grid { grid-template-columns: 1fr; } }
+  /* BOL source selector buttons */
+  .bol-src-btn { flex:1; padding:10px 8px; font-family:var(--mono); font-size:0.72rem; font-weight:600; border:none; border-right:1px solid var(--border); cursor:pointer; background:var(--surface2); color:var(--muted); transition:all 0.15s; letter-spacing:0.03em; }
+  .bol-src-btn:last-child { border-right:none; }
+  .bol-src-btn:hover { background:var(--surface); color:var(--text); }
+  .bol-src-btn.active { background:var(--accent); color:#fff; }
+  /* Mid States manual grid */
+  .ms-row input { background:var(--surface2); border:none; border-top:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:0.78rem; padding:7px 10px; outline:none; width:100%; }
+  .ms-row input:focus { background:#141b2d; }
+  .ms-row input.date-cell { border-left:1px solid var(--border); }
+  .ms-row .del-btn { border-top:1px solid var(--border); border-left:1px solid var(--border); background:none; color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:0.9rem; padding:0; }
+  .ms-row .del-btn:hover { color:var(--danger); background:#2a0f0f; }
+  /* Creator results table */
+  .creator-date-input { background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text); font-family:var(--mono); font-size:0.73rem; padding:3px 8px; outline:none; width:100px; transition:border-color 0.15s; }
+  .creator-date-input:focus { border-color:var(--accent); }
+  .creator-date-input.uncertain { border-color:var(--warn); color:var(--warn); }
+
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -333,53 +349,116 @@
   <!-- ── TAB: LOT CREATOR ── -->
   <div class="tab-content" id="tabContent-creator">
 
-    <div class="creator-grid">
-      <!-- Flock code input -->
-      <div class="panel">
-        <div class="panel-header">
-          <span class="label">① Enter Flock Code</span>
-          <span class="badge" id="flockBadge">No code</span>
-        </div>
-        <div class="flock-input-wrap">
-          <label class="flock-label">Flock / Prefix Code (up to 4 characters)</label>
-          <input type="text" class="flock-input" id="flockInput" maxlength="4"
-            placeholder="3024"
-            oninput="onFlockInput()"
-            autocomplete="off"/>
-          <div class="flock-preview" id="flockPreview">Enter a flock code to preview lot format</div>
-        </div>
+    <!-- Step 1: BOL Source -->
+    <div class="panel" style="margin-bottom:20px;">
+      <div class="panel-header">
+        <span class="label">① BOL Source</span>
+        <span class="badge" id="badge-bol-source">Cold Zone</span>
       </div>
-
-      <!-- BOL image drop + manual input -->
-      <div class="panel">
-        <div class="panel-header">
-          <span class="label">② Pallet IDs</span>
-          <span class="badge" id="badge-creator-pallets">0 pallets</span>
-        </div>
-        <!-- Image drop zone -->
-        <div class="img-drop-zone" id="creatorDropZone"
-          onclick="document.getElementById('creatorFileInput').click()"
-          ondragover="handleImgDragOver(event,'creatorDropZone')" ondragleave="handleImgDragLeave('creatorDropZone')" ondrop="handleCreatorDrop(event)">
-          <input type="file" id="creatorFileInput" accept="image/*" onchange="handleCreatorFile(event)">
-          <span style="font-size:1.4rem">📋</span>
-          <div class="img-drop-label"><strong>Drop BOL screenshot here</strong><br>or press <strong style="color:var(--accent)">Ctrl+V</strong> to paste</div>
-          <img id="creatorImgPreview" class="img-preview"/>
-          <div class="scan-status" id="creatorScanStatus"></div>
-        </div>
-        <!-- Manual input -->
-        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:6px 0 4px;">— or type / paste manually below —</div>
-        <textarea id="creatorManualInput" placeholder="Enter pallet IDs manually, one per line:&#10;2353580&#10;2361684&#10;2361695&#10;..." style="height:120px;" oninput="onCreatorManualInput()"></textarea>
+      <div style="display:flex;gap:0;padding:14px 16px;">
+        <button class="bol-src-btn active" id="src-coldzone" onclick="selectBolSource('coldzone')">Cold Zone</button>
+        <button class="bol-src-btn" id="src-vertical" onclick="selectBolSource('vertical')">Vertical</button>
+        <button class="bol-src-btn" id="src-midstates" onclick="selectBolSource('midstates')">Mid States</button>
+        <button class="bol-src-btn" id="src-henorth" onclick="selectBolSource('henorth')">HE North</button>
+      </div>
+      <div style="padding:0 16px 14px;font-family:var(--mono);font-size:0.68rem;color:var(--muted)" id="srcDescription">
+        Digital PDF/screenshot. Columns: Pack ID | Cases | Plts | Item | Description | Prod | Exp | Lot No. | Weight. Extracts Pack ID (pallet) + Prod date. Requires flock prefix.
       </div>
     </div>
 
-    <!-- Generated lots -->
+    <!-- Step 2: Input (source-dependent) -->
+    <div class="panel" style="margin-bottom:20px;">
+      <div class="panel-header">
+        <span class="label">② Input</span>
+        <span class="badge" id="badge-creator-pallets">0 rows</span>
+      </div>
+
+      <!-- Shared flock code — always visible -->
+      <div class="flock-input-wrap" style="padding-bottom:0;border-bottom:1px solid var(--border);">
+        <label class="flock-label">Flock / Prefix Code (up to 4 chars)</label>
+        <input type="text" class="flock-input" id="czFlockInput" maxlength="4" placeholder="3024"
+          oninput="onCzFlockInput()" autocomplete="off" style="font-size:1.2rem;padding:10px 14px;"/>
+        <div class="flock-preview" id="czFlockPreview">Enter a flock code to preview lot format</div>
+      </div>
+
+      <!-- ── COLD ZONE ── -->
+      <div id="input-coldzone">
+        <div class="img-drop-zone" id="czDropZone"
+          onclick="document.getElementById('czFileInput').click()"
+          ondragover="handleImgDragOver(event,'czDropZone')" ondragleave="handleImgDragLeave('czDropZone')"
+          ondrop="handleCreatorDrop(event,'coldzone')">
+          <input type="file" id="czFileInput" accept="image/*" onchange="handleCreatorFile(event,'coldzone')">
+          <div class="img-drop-label"><strong>Drop Cold Zone BOL screenshot here</strong><br>or press <strong style="color:var(--accent)">Ctrl+V</strong> to paste<br><span style="font-size:0.63rem;color:var(--muted)">Extracts Pack ID + Prod date automatically</span></div>
+          <img id="czImgPreview" class="img-preview"/>
+          <div class="scan-status" id="czScanStatus"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:6px 0 4px;">— or enter manually below (PackID TAB ProdDate, one per line) —</div>
+        <textarea id="czManualInput" placeholder="4567890&#9;3/15/2026&#10;4567891&#9;3/16/2026" style="height:100px;" oninput="onCreatorManualInput()"></textarea>
+      </div>
+
+      <!-- ── VERTICAL ── -->
+      <div id="input-vertical" style="display:none;">
+        <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);padding:14px 16px 0;line-height:1.6;">
+          Columns: Quantity | Item | Description | Date | Lot | Net Weight | Gross Weight<br>
+          Extracts the <strong style="color:var(--text)">Lot</strong> column (already complete) and <strong style="color:var(--text)">Date</strong> column (YYMMDD → M/D/YY). Flock prefix prepended.
+        </div>
+        <div class="img-drop-zone" id="vtDropZone"
+          onclick="document.getElementById('vtFileInput').click()"
+          ondragover="handleImgDragOver(event,'vtDropZone')" ondragleave="handleImgDragLeave('vtDropZone')"
+          ondrop="handleCreatorDrop(event,'vertical')">
+          <input type="file" id="vtFileInput" accept="image/*" onchange="handleCreatorFile(event,'vertical')">
+          <div class="img-drop-label"><strong>Drop Vertical BOL screenshot here</strong><br>or press <strong style="color:var(--accent)">Ctrl+V</strong> to paste</div>
+          <img id="vtImgPreview" class="img-preview"/>
+          <div class="scan-status" id="vtScanStatus"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:6px 0 4px;">— or enter manually below (FullLotNumber TAB YYMMDD, one per line) —</div>
+        <textarea id="vtManualInput" placeholder="ABCD-1234567&#9;260209&#10;ABCD-1234568&#9;260210" style="height:100px;" oninput="onCreatorManualInput()"></textarea>
+      </div>
+
+      <!-- ── MID STATES (manual only) ── -->
+      <div id="input-midstates" style="display:none;">
+        <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);padding:14px 16px 10px;line-height:1.6;">
+          Handwritten BOL — manual entry only. Enter lot number and lay date for each row.
+        </div>
+        <div style="padding:0 16px 14px;">
+          <div style="display:grid;grid-template-columns:1fr 120px 32px;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
+            <div style="padding:6px 10px;background:var(--surface2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);">Lot Number</div>
+            <div style="padding:6px 10px;background:var(--surface2);border-bottom:1px solid var(--border);border-left:1px solid var(--border);font-family:var(--mono);font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);">Lay Date</div>
+            <div style="background:var(--surface2);border-bottom:1px solid var(--border);border-left:1px solid var(--border);"></div>
+            <div id="msRowsContainer" style="display:contents;"></div>
+          </div>
+          <button class="btn btn-secondary" onclick="addMsRow()" style="margin-top:10px;padding:7px 14px;font-size:0.72rem;">＋ Add Row</button>
+        </div>
+      </div>
+
+      <!-- ── HE NORTH ── -->
+      <div id="input-henorth" style="display:none;">
+        <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);padding:14px 16px 0;line-height:1.6;">
+          Columns: Tag # | Egg Type | Lay Date. Tag format: <span style="color:var(--accent2)">CRITBA1 49406363</span> (letter prefix + space + number). Lay Date: M-D-YY. Flock prefix prepended.
+        </div>
+        <div class="img-drop-zone" id="hnDropZone"
+          onclick="document.getElementById('hnFileInput').click()"
+          ondragover="handleImgDragOver(event,'hnDropZone')" ondragleave="handleImgDragLeave('hnDropZone')"
+          ondrop="handleCreatorDrop(event,'henorth')">
+          <input type="file" id="hnFileInput" accept="image/*" onchange="handleCreatorFile(event,'henorth')">
+          <div class="img-drop-label"><strong>Drop HE North tag image here</strong><br>or press <strong style="color:var(--accent)">Ctrl+V</strong> to paste</div>
+          <img id="hnImgPreview" class="img-preview"/>
+          <div class="scan-status" id="hnScanStatus"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:6px 0 4px;">— or enter manually below (TagNumber TAB M-D-YY, one per line) —</div>
+        <textarea id="hnManualInput" placeholder="CRITBA1 49406363&#9;3-15-26&#10;CRITBA1 49406364&#9;3-15-26" style="height:100px;" oninput="onCreatorManualInput()"></textarea>
+      </div>
+
+    </div><!-- /input panel -->
+
+    <!-- Step 3: Generated lots -->
     <div class="created-lots-panel">
       <div class="created-lots-header">
         <span class="label">③ Generated BC Lot Numbers</span>
         <span class="badge" id="badge-created">0 lots</span>
       </div>
-      <div class="created-lots-list" id="createdLotsList" style="padding:0">
-        <div class="created-lot-empty" style="padding:14px 16px">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>
+      <div id="createdLotsList" style="padding:0;">
+        <div class="created-lot-empty" style="padding:14px 16px;">Select a BOL source, enter data above, then lot numbers will appear here.</div>
       </div>
     </div>
 
@@ -389,8 +468,8 @@
       <button class="btn btn-secondary" onclick="clearCreator()">✕ Clear</button>
     </div>
 
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:24px;" id="creatorCopyBox" style="display:none">
-      <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Ready to paste into BC</div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:24px;display:none;" id="creatorCopyBox">
+      <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Ready to paste into BC (Lot + Date, tab-separated)</div>
       <div class="big-copy-area" id="createdLotsBox" onclick="copyCreatedLots()">—</div>
     </div>
 
@@ -569,168 +648,424 @@ function switchTab(tab) {
 }
 
 // ── Lot Creator ───────────────────────────────────────────────────
-let creatorPallets = [];
-let creatorFlockCode = '';
 
-function onFlockInput() {
-  const val = document.getElementById('flockInput').value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
-  document.getElementById('flockInput').value = val;
-  creatorFlockCode = val;
-  const badge = document.getElementById('flockBadge');
-  const preview = document.getElementById('flockPreview');
+// Creator state
+let bolSource = 'coldzone';  // 'coldzone' | 'vertical' | 'midstates' | 'henorth'
+let creatorEntries = [];     // [{lot, date, dateUncertain}] — the final working set
+let czFlockCode = '';
+let msRowCounter = 0;
+
+// Source descriptions shown below the selector
+const BOL_DESCRIPTIONS = {
+  coldzone:  'Digital PDF/screenshot. Columns: Pack ID | Cases | Plts | Item | Description | Prod | Exp | Lot No. | Weight. Extracts Pack ID (pallet) + Prod date. Lot = FLOCKCODE-PackID.',
+  vertical:  'Digital PDF/screenshot. Columns: Quantity | Item | Description | Date | Lot | Net Weight | Gross Weight. Extracts the Lot column + Date column (YYMMDD → M/D/YY). Flock prefix prepended to lot.',
+  midstates: 'Handwritten BOL — manual entry only. Add rows and type lot number + lay date for each pallet. Flock prefix prepended to lot.',
+  henorth:   'Printed/handwritten hybrid. Columns: Tag # | Egg Type | Lay Date. Tag format: CRITBA1 49406363. Lay Date: M-D-YY. Flock prefix prepended to lot.'
+};
+
+// ── Source selection ──────────────────────────────────────────────
+function selectBolSource(src) {
+  bolSource = src;
+  // Update button styles
+  ['coldzone','vertical','midstates','henorth'].forEach(s => {
+    document.getElementById('src-' + s).classList.toggle('active', s === src);
+    document.getElementById('input-' + s).style.display = s === src ? '' : 'none';
+  });
+  // Update badge + description
+  const labels = { coldzone: 'Cold Zone', vertical: 'Vertical', midstates: 'Mid States', henorth: 'HE North' };
+  document.getElementById('badge-bol-source').textContent = labels[src];
+  document.getElementById('srcDescription').textContent = BOL_DESCRIPTIONS[src];
+  // Seed a first row for Mid States if grid is empty
+  if (src === 'midstates' && document.getElementById('msRowsContainer').children.length === 0) {
+    addMsRow();
+  }
+  // Reset creator entries when switching source
+  creatorEntries = [];
+  renderCreatorResults();
+}
+
+// ── Cold Zone flock input ─────────────────────────────────────────
+function onCzFlockInput() {
+  const val = document.getElementById('czFlockInput').value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
+  document.getElementById('czFlockInput').value = val;
+  czFlockCode = val;
+  const preview = document.getElementById('czFlockPreview');
   if (val) {
-    badge.textContent = val;
-    badge.className = 'badge loaded';
     preview.innerHTML = 'Format: <span style="color:var(--accent2);font-weight:600">' + val + '-PALLETID</span> &nbsp; e.g. <span style="color:var(--accent2)">' + val + '-2361685</span>';
   } else {
-    badge.textContent = 'No code';
-    badge.className = 'badge';
     preview.textContent = 'Enter a flock code to preview lot format';
   }
-  rebuildCreatedLots();
+  // Rebuild results if we already have scanned data
+  if (creatorEntries.length) renderCreatorResults();
 }
 
-function handleCreatorDrop(e) {
+// ── Drop zone / file handlers (unified for all sources) ───────────
+function handleCreatorDrop(e, src) {
   e.preventDefault();
-  document.getElementById('creatorDropZone').classList.remove('dragover');
+  const dzId = { coldzone: 'czDropZone', vertical: 'vtDropZone', henorth: 'hnDropZone' }[src];
+  if (dzId) document.getElementById(dzId).classList.remove('dragover');
   const file = e.dataTransfer.files[0];
-  if (file && file.type.startsWith('image/')) processCreatorImage(file);
+  if (file && file.type.startsWith('image/')) processCreatorImage(file, src);
 }
-function handleCreatorFile(e) {
+function handleCreatorFile(e, src) {
   const file = e.target.files[0];
-  if (file) processCreatorImage(file);
+  if (file) processCreatorImage(file, src);
 }
 
-async function processCreatorImage(file) {
+// ── OCR processing ────────────────────────────────────────────────
+async function processCreatorImage(file, src) {
+  const dzMap    = { coldzone: 'czDropZone',   vertical: 'vtDropZone',   henorth: 'hnDropZone' };
+  const prevMap  = { coldzone: 'czImgPreview', vertical: 'vtImgPreview', henorth: 'hnImgPreview' };
+  const statMap  = { coldzone: 'czScanStatus', vertical: 'vtScanStatus', henorth: 'hnScanStatus' };
+
+  const dz     = document.getElementById(dzMap[src]);
+  const prev   = document.getElementById(prevMap[src]);
+  const status = document.getElementById(statMap[src]);
+
+  // Show preview image
   const reader = new FileReader();
-  reader.onload = async function(ev) {
-    const preview = document.getElementById('creatorImgPreview');
-    preview.src = ev.target.result;
-    preview.style.display = 'block';
-    const dz = document.getElementById('creatorDropZone');
-    const status = document.getElementById('creatorScanStatus');
-    dz.classList.remove('done','error-state');
-    dz.classList.add('scanning');
-    status.className = 'scan-status scanning';
-    status.textContent = '⟳ Loading OCR engine...';
-    try {
-      const { data: ocrData } = await Tesseract.recognize(file, 'eng', {
-        logger: m => {
-          if (m.status === 'recognizing text') {
-            status.textContent = '⟳ Scanning... ' + Math.round(m.progress*100) + '%';
-          }
-        }
-      });
-      const rawText = ocrData.text || '';
-      if (!rawText.trim()) throw new Error('No text found. Try a clearer screenshot.');
-
-      // Parse lines to extract pallet ID and lay date
-      // Format per line: PALLETID  [EGG_TYPE]  DATE  (e.g. "CRITBAZ 50109830  ORG  3-17-26")
-      // EGG_TYPE (ORG, PRB, etc) is ignored
-      const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const palletDatePairs = [];
-      const seenPallets = new Set();
-      const dateRegex = /(\d{1,2}[-\/.]\d{1,2}[-\/.]\d{2,4})/;
-      // Known egg type codes to skip
-      const skipTokens = new Set(['ORG','PRB','PRE','ORB','CAGE','FREE','RANGE','ORGANIC','CONVENTIONAL']);
-
-      lines.forEach((line, idx) => {
-        // Strip common noise chars
-        const clean = line.replace(/[|"'`_\[\]{}]/g, ' ').trim();
-
-        // Find date on this line or adjacent lines
-        let date = '';
-        const dateMatch = clean.match(dateRegex);
-        if (dateMatch) {
-          date = dateMatch[1];
-        } else {
-          // Check next line for a date
-          const nextLine = lines[idx+1] || '';
-          const nextMatch = nextLine.match(dateRegex);
-          if (nextMatch) date = nextMatch[1];
-        }
-
-        // Extract pallet: split by whitespace, skip egg type codes, find token with digits 5-20 chars
-        const tokens = clean.split(/\s+/);
-        const palletToken = tokens.find(t => {
-          const upper = t.toUpperCase().replace(/[^A-Z0-9]/g,'');
-          return t.length >= 5 && t.length <= 20
-            && /\d/.test(t)
-            && !dateRegex.test(t)
-            && !skipTokens.has(upper)
-            && upper.length >= 5;
-        });
-
-        if (palletToken && !seenPallets.has(palletToken)) {
-          seenPallets.add(palletToken);
-          const uncertain = !date;
-          palletDatePairs.push({ pallet: palletToken, date, uncertain });
-        }
-      });
-
-      // Fallback: if line-by-line failed, just grab numeric tokens
-      if (!palletDatePairs.length) {
-        const allTokens = rawText.split(/[\s\r\n\t,;|]+/);
-        const allNumbers = allTokens.map(t => t.trim()).filter(t => t.length >= 5 && t.length <= 20 && /\d/.test(t));
-        [...new Set(allNumbers)].forEach(p => palletDatePairs.push({ pallet: p, date: '', uncertain: true }));
-      }
-
-      creatorPallets = palletDatePairs.map(r => r.pallet);
-      window._creatorDates = palletDatePairs;
-
-      if (!creatorPallets.length) throw new Error('No pallet numbers found in image.');
-      dz.classList.remove('scanning');
-      dz.classList.add('done');
-      status.className = 'scan-status done';
-      status.textContent = '✓ ' + creatorPallets.length + ' pallets found';
-
-      // Merge scanned with any manually entered pallets
-      const manualRaw = document.getElementById('creatorManualInput').value;
-      const manualTokens2 = manualRaw.split(/[\s\r\n\t,;|]+/);
-      const manualNums = [...new Set(manualTokens2.map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 20 && t.length > 0))];
-      // Add manual pallets without dates
-      manualNums.forEach(p => {
-        if (!seenPallets.has(p)) { palletDatePairs.push({ pallet: p, date: '', uncertain: true }); seenPallets.add(p); }
-      });
-      window._creatorMerged = palletDatePairs.map(r => r.pallet);
-      window._creatorDates = palletDatePairs;
-
-      document.getElementById('badge-creator-pallets').textContent = palletDatePairs.length + ' pallets';
-      document.getElementById('badge-creator-pallets').className = 'badge loaded';
-      rebuildCreatedLots(palletDatePairs.map(r => r.pallet));
-    } catch(err) {
-      dz.classList.remove('scanning');
-      dz.classList.add('error-state');
-      status.className = 'scan-status error';
-      status.textContent = '✕ ' + (err.message || 'Scan failed');
-    }
-  };
+  reader.onload = ev => { prev.src = ev.target.result; prev.style.display = 'block'; };
   reader.readAsDataURL(file);
-}
 
-function rebuildCreatedLots(overridePallets) {
-  const list = document.getElementById('createdLotsList');
-  const box = document.getElementById('createdLotsBox');
-  const badge = document.getElementById('badge-created');
-  // Use override (merged scanned+manual) or fallback to scanned only
-  const activePallets = overridePallets || window._creatorMerged || creatorPallets;
-  if (!creatorFlockCode || !activePallets.length) {
-    list.innerHTML = '<div class="created-lot-empty">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>';
-    badge.textContent = '0 lots'; badge.className = 'badge';
-    box.textContent = '—'; return;
+  dz.classList.remove('done','error-state');
+  dz.classList.add('scanning');
+  status.className = 'scan-status scanning';
+  status.textContent = '⟳ Loading OCR engine...';
+
+  try {
+    const { data: ocrData } = await Tesseract.recognize(file, 'eng', {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          status.textContent = '⟳ Scanning... ' + Math.round(m.progress * 100) + '%';
+        }
+      }
+    });
+    const rawText = ocrData.text || '';
+    if (!rawText.trim()) throw new Error('No text found. Try a clearer screenshot.');
+
+    // Parse OCR text according to source type
+    const parsed = parseOcrText(rawText, src);
+    if (!parsed.length) throw new Error('Could not extract lot data from image. Try manual entry below.');
+
+    // Merge with existing manual entries (by lot number to avoid dupes)
+    mergeCreatorEntries(parsed);
+
+    dz.classList.remove('scanning');
+    dz.classList.add('done');
+    status.className = 'scan-status done';
+    status.textContent = '✓ ' + parsed.length + ' rows found';
+    renderCreatorResults();
+
+  } catch (err) {
+    dz.classList.remove('scanning');
+    dz.classList.add('error-state');
+    status.className = 'scan-status error';
+    status.textContent = '✕ ' + (err.message || 'Scan failed');
   }
-  const lots = activePallets.map(p => creatorFlockCode + '-' + p);
-  badge.textContent = lots.length + ' lots'; badge.className = 'badge loaded';
-  list.innerHTML = lots.map(function(l) {
-    var safe = l.replace(/'/g, "&#39;");
-    return '<div class="created-lot-row"><span class="created-lot-val">' + l + '</span><button class="copy-btn" onclick="copySingle(this,\'' + safe + '\')">copy</button></div>';
-  }).join('');
-  box.textContent = lots.join('\n');
-  document.getElementById('creatorCopyBox').style.display = 'block';
 }
 
+// ── Source-specific OCR parsers ───────────────────────────────────
+
+function parseOcrText(rawText, src) {
+  if (src === 'coldzone')  return parseColdZoneOcr(rawText);
+  if (src === 'vertical')  return parseVerticalOcr(rawText);
+  if (src === 'henorth')   return parseHENorthOcr(rawText);
+  return [];
+}
+
+// Cold Zone: extract 7-digit Pack ID + M/D/YYYY Prod date
+// Builds lot as czFlockCode-PackID
+function parseColdZoneOcr(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const dateRx = /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/;
+  const results = [];
+  const seen = new Set();
+  lines.forEach((line, idx) => {
+    const idMatch = line.match(/\b(\d{7})\b/);
+    if (!idMatch) return;
+    const packId = idMatch[1];
+    if (seen.has(packId)) return;
+    seen.add(packId);
+    // Look for date on this line or next
+    let rawDate = '';
+    const dm = line.match(dateRx);
+    if (dm) rawDate = dm[0];
+    else {
+      const next = lines[idx+1] || '';
+      const ndm = next.match(dateRx);
+      if (ndm) rawDate = ndm[0];
+    }
+    const { date, uncertain } = parseDateMDY(rawDate);
+    results.push({ lot: packId, date, dateUncertain: uncertain });
+  });
+  return results;
+}
+
+// Vertical: extract full lot number from "Lot" column + YYMMDD date from "Date" column
+function parseVerticalOcr(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const lotRx = /\b([A-Z]{2,8}-\d{5,10})\b/i;
+  const yymmdRx = /\b(\d{6})\b/;
+  const dateRx = /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/;
+  const results = [];
+  const seen = new Set();
+  lines.forEach((line, idx) => {
+    const lm = line.match(lotRx);
+    if (!lm) return;
+    const lot = lm[1].toUpperCase();
+    if (seen.has(lot)) return;
+    seen.add(lot);
+    // Try YYMMDD first (from Date column), then M/D/YY
+    let rawDate = '';
+    const yyMatch = line.match(yymmdRx);
+    const mdMatch = line.match(dateRx);
+    if (yyMatch) rawDate = yyMatch[1];
+    else if (mdMatch) rawDate = mdMatch[0];
+    else {
+      const next = lines[idx+1] || '';
+      const nyyMatch = next.match(yymmdRx);
+      if (nyyMatch) rawDate = nyyMatch[1];
+    }
+    const { date, uncertain } = rawDate.length === 6 ? parseDateYYMMDD(rawDate) : parseDateMDY(rawDate);
+    results.push({ lot, date, dateUncertain: uncertain });
+  });
+  return results;
+}
+
+// HE North: extract "TAG# NNNNNNNN" as lot, M-D-YY as date
+function parseHENorthOcr(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  // Tag format: letters+digits space 8-digit number, e.g. CRITBA1 49406363
+  const tagRx = /([A-Z]+\d*\s+\d{6,10})/i;
+  const dateRx = /\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4})\b/;
+  const results = [];
+  const seen = new Set();
+  lines.forEach((line, idx) => {
+    const tm = line.match(tagRx);
+    if (!tm) return;
+    const lot = tm[1].trim().toUpperCase();
+    if (seen.has(lot)) return;
+    seen.add(lot);
+    let rawDate = '';
+    const dm = line.match(dateRx);
+    if (dm) rawDate = dm[1];
+    else {
+      const next = lines[idx+1] || '';
+      const ndm = next.match(dateRx);
+      if (ndm) rawDate = ndm[1];
+    }
+    const { date, uncertain } = parseDateDashed(rawDate);
+    results.push({ lot, date, dateUncertain: uncertain });
+  });
+  return results;
+}
+
+// ── Date parsers ──────────────────────────────────────────────────
+
+// M/D/YYYY or M/D/YY → M/D/YY
+function parseDateMDY(raw) {
+  const m = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (!m) return { date: raw || '', uncertain: true };
+  let yy = parseInt(m[3]);
+  if (yy > 100) yy = yy % 100;
+  return { date: parseInt(m[1]) + '/' + parseInt(m[2]) + '/' + (yy < 10 ? '0'+yy : yy), uncertain: false };
+}
+
+// YYMMDD → M/D/YY
+function parseDateYYMMDD(raw) {
+  const m = raw.match(/^(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return { date: raw, uncertain: true };
+  const yy = parseInt(m[1]), mm = parseInt(m[2]), dd = parseInt(m[3]);
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return { date: raw, uncertain: true };
+  return { date: mm + '/' + dd + '/' + (yy < 10 ? '0'+yy : yy), uncertain: false };
+}
+
+// M-D-YY (HE North) → M/D/YY
+function parseDateDashed(raw) {
+  const m = raw.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
+  if (!m) return { date: raw || '', uncertain: true };
+  let yy = parseInt(m[3]);
+  if (yy > 100) yy = yy % 100;
+  return { date: parseInt(m[1]) + '/' + parseInt(m[2]) + '/' + (yy < 10 ? '0'+yy : yy), uncertain: false };
+}
+
+// ── Manual input handler ──────────────────────────────────────────
+function onCreatorManualInput() {
+  if (bolSource === 'midstates') return; // Mid States has its own grid
+  const taMap = { coldzone: 'czManualInput', vertical: 'vtManualInput', henorth: 'hnManualInput' };
+  const raw = document.getElementById(taMap[bolSource]).value.trim();
+  if (!raw) return;
+  const lines = raw.split(/\r?\n/).filter(l => l.trim());
+  const parsed = [];
+  const seen = new Set();
+  lines.forEach(line => {
+    const parts = line.split(/\t/);
+    if (parts.length < 1 || !parts[0].trim()) return;
+    let lot = parts[0].trim();
+    let rawDate = parts[1] ? parts[1].trim() : '';
+    // Normalise case
+    if (bolSource !== 'coldzone') lot = lot.toUpperCase();
+    // Prepend flock prefix for all sources if set and not already present
+    if (czFlockCode && !lot.startsWith(czFlockCode + '-')) {
+      lot = czFlockCode + '-' + lot;
+    }
+    if (seen.has(lot)) return;
+    seen.add(lot);
+    let dateObj;
+    if (bolSource === 'vertical' && rawDate.length === 6 && /^\d{6}$/.test(rawDate)) {
+      dateObj = parseDateYYMMDD(rawDate);
+    } else if (bolSource === 'henorth') {
+      dateObj = parseDateDashed(rawDate);
+    } else {
+      dateObj = parseDateMDY(rawDate);
+    }
+    parsed.push({ lot, date: dateObj.date, dateUncertain: dateObj.uncertain });
+  });
+  mergeCreatorEntries(parsed);
+  renderCreatorResults();
+}
+
+// ── Mid States manual grid ────────────────────────────────────────
+function addMsRow() {
+  const id = msRowCounter++;
+  const container = document.getElementById('msRowsContainer');
+  const lotInput = document.createElement('input');
+  lotInput.type = 'text';
+  lotInput.placeholder = 'e.g. ABCD-1234567';
+  lotInput.className = 'lot-cell ms-row';
+  lotInput.oninput = rebuildMidStates;
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'text';
+  dateInput.placeholder = '3/15/26';
+  dateInput.className = 'date-cell ms-row';
+  dateInput.oninput = rebuildMidStates;
+
+  const delBtn = document.createElement('button');
+  delBtn.className = 'del-btn ms-row';
+  delBtn.textContent = '✕';
+  delBtn.title = 'Remove row';
+  delBtn.onclick = function() {
+    lotInput.remove(); dateInput.remove(); delBtn.remove();
+    rebuildMidStates();
+  };
+
+  container.appendChild(lotInput);
+  container.appendChild(dateInput);
+  container.appendChild(delBtn);
+}
+
+function rebuildMidStates() {
+  const lotInputs  = document.querySelectorAll('#msRowsContainer .lot-cell');
+  const dateInputs = document.querySelectorAll('#msRowsContainer .date-cell');
+  const entries = [];
+  lotInputs.forEach((li, i) => {
+    let lot = li.value.trim().toUpperCase();
+    if (!lot) return;
+    if (czFlockCode && !lot.startsWith(czFlockCode + '-')) {
+      lot = czFlockCode + '-' + lot;
+    }
+    const rawDate = dateInputs[i] ? dateInputs[i].value.trim() : '';
+    const { date, uncertain } = parseDateMDY(rawDate);
+    entries.push({ lot, date: rawDate ? date : '', dateUncertain: !rawDate || uncertain });
+  });
+  creatorEntries = entries;
+  renderCreatorResults();
+}
+
+// ── Entry management ──────────────────────────────────────────────
+function mergeCreatorEntries(newEntries) {
+  const existing = new Map(creatorEntries.map(e => [e.lot, e]));
+  newEntries.forEach(e => {
+    // Prepend flock prefix to lot if we have one and it's not already there
+    let lot = e.lot;
+    if (czFlockCode && !lot.startsWith(czFlockCode + '-')) {
+      lot = czFlockCode + '-' + lot;
+    }
+    if (!existing.has(lot)) {
+      existing.set(lot, { lot, date: e.date, dateUncertain: e.dateUncertain });
+    }
+  });
+  creatorEntries = [...existing.values()];
+}
+
+// ── Render results table ──────────────────────────────────────────
+function renderCreatorResults() {
+  const list  = document.getElementById('createdLotsList');
+  const box   = document.getElementById('createdLotsBox');
+  const badge = document.getElementById('badge-created');
+  const copyBox = document.getElementById('creatorCopyBox');
+
+  // Require a flock code on all sources
+  if (!czFlockCode && creatorEntries.length === 0) {
+    list.innerHTML = '<div class="created-lot-empty" style="padding:14px 16px">Enter a flock code above, then add pallet data via screenshot or manual entry.</div>';
+    badge.textContent = '0 lots'; badge.className = 'badge';
+    box.textContent = '—'; copyBox.style.display = 'none';
+    updateCreatorBadge();
+    return;
+  }
+
+  if (!creatorEntries.length) {
+    list.innerHTML = '<div class="created-lot-empty" style="padding:14px 16px">No lots generated yet. Add data via screenshot or manual entry above.</div>';
+    badge.textContent = '0 lots'; badge.className = 'badge';
+    box.textContent = '—'; copyBox.style.display = 'none';
+    updateCreatorBadge();
+    return;
+  }
+
+  badge.textContent = creatorEntries.length + ' lots';
+  badge.className = 'badge loaded';
+  copyBox.style.display = 'block';
+
+  // Build table rows
+  const uncertain = creatorEntries.filter(e => e.dateUncertain).length;
+  let tableHtml = '<table class="created-lots-table"><thead><tr><th>BC Lot Number</th><th>Lay Date</th><th></th></tr></thead><tbody>';
+  creatorEntries.forEach((entry, i) => {
+    const warnClass = entry.dateUncertain ? ' uncertain' : '';
+    const warnIcon  = entry.dateUncertain ? '<span style="color:var(--warn);margin-right:4px;" title="Date uncertain — please verify">⚠</span>' : '';
+    const safeLot   = entry.lot.replace(/'/g, '&#39;');
+    const safeDate  = entry.date.replace(/'/g, '&#39;');
+    tableHtml += '<tr>'
+      + '<td style="color:var(--accent2);font-weight:600">' + entry.lot + '</td>'
+      + '<td>' + warnIcon + '<input class="creator-date-input' + warnClass + '" value="' + safeDate + '" data-idx="' + i + '" oninput="updateEntryDate(this)"/></td>'
+      + '<td><button class="copy-btn" onclick="copySingle(this,\'' + safeLot + '\\t' + safeDate + '\')">copy</button></td>'
+      + '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+
+  if (uncertain) {
+    tableHtml = '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--warn);padding:10px 14px;border-bottom:1px solid var(--border);">⚠ ' + uncertain + ' date(s) could not be read — please fill in the highlighted fields before copying.</div>' + tableHtml;
+  }
+  list.innerHTML = tableHtml;
+
+  // Update the copy area
+  rebuildCopyBox();
+  updateCreatorBadge();
+}
+
+function updateEntryDate(input) {
+  const i = parseInt(input.dataset.idx);
+  if (creatorEntries[i]) {
+    creatorEntries[i].date = input.value;
+    creatorEntries[i].dateUncertain = !input.value.trim();
+    input.className = 'creator-date-input' + (creatorEntries[i].dateUncertain ? ' uncertain' : '');
+  }
+  rebuildCopyBox();
+}
+
+function rebuildCopyBox() {
+  const box = document.getElementById('createdLotsBox');
+  box.textContent = creatorEntries.map(e => e.lot + '\t' + e.date).join('\n');
+}
+
+function updateCreatorBadge() {
+  const badge = document.getElementById('badge-creator-pallets');
+  badge.textContent = creatorEntries.length + ' rows';
+  badge.className = creatorEntries.length ? 'badge loaded' : 'badge';
+}
+
+// ── Copy / clear ──────────────────────────────────────────────────
 function copyCreatedLots() {
-  updateCreatedLotsBoxFromTable();
   const text = document.getElementById('createdLotsBox').textContent;
   if (!text || text === '—') return;
   navigator.clipboard.writeText(text).then(() => {
@@ -739,59 +1074,51 @@ function copyCreatedLots() {
   });
 }
 
-function onCreatorManualInput() {
-  const raw = document.getElementById('creatorManualInput').value;
-  const tokens = raw.split(/[\s\r\n\t,;|]+/);
-  const manual = [...new Set(tokens.map(t => t.trim()).filter(t => t.length >= 1 && t.length <= 20 && t.length > 0))];
-  // Start with scanned pairs
-  const existingDates = window._creatorDates || [];
-  const seenPallets = new Set(existingDates.map(r => r.pallet));
-  const merged = [...existingDates];
-  manual.forEach(p => { if (!seenPallets.has(p)) { merged.push({ pallet: p, date: '', uncertain: true }); seenPallets.add(p); }});
-  window._creatorMerged = merged.map(r => r.pallet);
-  window._creatorDates = merged;
-  const badge = document.getElementById('badge-creator-pallets');
-  badge.textContent = merged.length + ' pallets';
-  badge.className = merged.length ? 'badge loaded' : 'badge';
-  rebuildCreatedLots(merged.map(r => r.pallet));
-}
-
 function clearCreator() {
-  creatorPallets = []; creatorFlockCode = '';
-  document.getElementById('flockInput').value = '';
-  document.getElementById('flockBadge').textContent = 'No code';
-  document.getElementById('flockBadge').className = 'badge';
-  document.getElementById('flockPreview').textContent = 'Enter a flock code to preview lot format';
-  document.getElementById('creatorImgPreview').style.display = 'none';
-  document.getElementById('creatorScanStatus').textContent = '';
-  document.getElementById('creatorFileInput').value = '';
-  document.getElementById('creatorManualInput').value = '';
-  window._creatorMerged = null;
-  window._creatorDates = null;
-  document.getElementById('badge-creator-pallets').textContent = '0 pallets';
-  document.getElementById('badge-creator-pallets').className = 'badge';
-  document.getElementById('badge-created').textContent = '0 lots';
-  document.getElementById('badge-created').className = 'badge';
-  document.getElementById('createdLotsList').innerHTML = '<div class="created-lot-empty">Enter a flock code and add pallet IDs via screenshot or manual entry to generate lot numbers.</div>';
-  document.getElementById('createdLotsBox').textContent = '—';
-  document.getElementById('creatorCopyBox').style.display = 'none';
-  document.getElementById('creatorDropZone').classList.remove('done','error-state','scanning');
+  creatorEntries = [];
+  czFlockCode = '';
+  // Cold Zone
+  document.getElementById('czFlockInput').value = '';
+  document.getElementById('czFlockPreview').textContent = 'Enter a flock code to preview lot format';
+  document.getElementById('czImgPreview').style.display = 'none';
+  document.getElementById('czScanStatus').textContent = '';
+  document.getElementById('czFileInput').value = '';
+  document.getElementById('czManualInput').value = '';
+  document.getElementById('czDropZone').classList.remove('done','error-state','scanning');
+  // Vertical
+  document.getElementById('vtImgPreview').style.display = 'none';
+  document.getElementById('vtScanStatus').textContent = '';
+  document.getElementById('vtFileInput').value = '';
+  document.getElementById('vtManualInput').value = '';
+  document.getElementById('vtDropZone').classList.remove('done','error-state','scanning');
+  // Mid States
+  document.getElementById('msRowsContainer').innerHTML = '';
+  msRowCounter = 0;
+  // HE North
+  document.getElementById('hnImgPreview').style.display = 'none';
+  document.getElementById('hnScanStatus').textContent = '';
+  document.getElementById('hnFileInput').value = '';
+  document.getElementById('hnManualInput').value = '';
+  document.getElementById('hnDropZone').classList.remove('done','error-state','scanning');
+  // Results
+  renderCreatorResults();
 }
 
-// Handle Ctrl+V paste on creator tab
+// ── Ctrl+V paste (creator tab) ────────────────────────────────────
 document.addEventListener('paste', function(e) {
   const creatorActive = document.getElementById('tabContent-creator').classList.contains('active');
   if (!creatorActive) return;
   if (document.getElementById('app').style.display === 'none') return;
   const active = document.activeElement;
-  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.id !== 'flockInput') return;
+  // Allow paste into textareas/inputs that aren't the flock input
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.id !== 'czFlockInput') return;
   const items = e.clipboardData && e.clipboardData.items;
   if (!items) return;
-  for (let i=0; i<items.length; i++) {
+  for (let i = 0; i < items.length; i++) {
     if (items[i].type.startsWith('image/')) {
       e.preventDefault();
       const file = items[i].getAsFile();
-      if (file) { processCreatorImage(file); }
+      if (file && bolSource !== 'midstates') processCreatorImage(file, bolSource);
       break;
     }
   }
