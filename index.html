@@ -185,12 +185,6 @@
   .bol-src-btn:last-child { border-right:none; }
   .bol-src-btn:hover { background:var(--surface); color:var(--text); }
   .bol-src-btn.active { background:var(--accent); color:#fff; }
-  /* Mid States manual grid */
-  .ms-row input { background:var(--surface2); border:none; border-top:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:0.78rem; padding:7px 10px; outline:none; width:100%; }
-  .ms-row input:focus { background:#141b2d; }
-  .ms-row input.date-cell { border-left:1px solid var(--border); }
-  .ms-row .del-btn { border-top:1px solid var(--border); border-left:1px solid var(--border); background:none; color:var(--muted); cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:0.9rem; padding:0; }
-  .ms-row .del-btn:hover { color:var(--danger); background:#2a0f0f; }
   /* Creator results table */
   .creator-date-input { background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text); font-family:var(--mono); font-size:0.73rem; padding:3px 8px; outline:none; width:100px; transition:border-color 0.15s; }
   .creator-date-input:focus { border-color:var(--accent); }
@@ -358,7 +352,6 @@
       <div style="display:flex;gap:0;padding:14px 16px;">
         <button class="bol-src-btn active" id="src-coldzone" onclick="selectBolSource('coldzone')">Cold Zone</button>
         <button class="bol-src-btn" id="src-vertical" onclick="selectBolSource('vertical')">Vertical</button>
-        <button class="bol-src-btn" id="src-midstates" onclick="selectBolSource('midstates')">Mid States</button>
         <button class="bol-src-btn" id="src-henorth" onclick="selectBolSource('henorth')">HE North</button>
       </div>
       <div style="padding:0 16px 14px;font-family:var(--mono);font-size:0.68rem;color:var(--muted)" id="srcDescription">
@@ -413,22 +406,6 @@
         </div>
         <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:6px 0 4px;">— or enter manually below (FullLotNumber TAB YYMMDD, one per line) —</div>
         <textarea id="vtManualInput" placeholder="ABCD-1234567&#9;260209&#10;ABCD-1234568&#9;260210" style="height:100px;" oninput="onCreatorManualInput()"></textarea>
-      </div>
-
-      <!-- ── MID STATES (manual only) ── -->
-      <div id="input-midstates" style="display:none;">
-        <div style="font-family:var(--mono);font-size:0.68rem;color:var(--muted);padding:14px 16px 10px;line-height:1.6;">
-          Handwritten BOL — manual entry only. Enter lot number and lay date for each row.
-        </div>
-        <div style="padding:0 16px 14px;">
-          <div style="display:grid;grid-template-columns:1fr 120px 32px;gap:0;border:1px solid var(--border);border-radius:6px;overflow:hidden;">
-            <div style="padding:6px 10px;background:var(--surface2);border-bottom:1px solid var(--border);font-family:var(--mono);font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);">Lot Number</div>
-            <div style="padding:6px 10px;background:var(--surface2);border-bottom:1px solid var(--border);border-left:1px solid var(--border);font-family:var(--mono);font-size:0.62rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted);">Lay Date</div>
-            <div style="background:var(--surface2);border-bottom:1px solid var(--border);border-left:1px solid var(--border);"></div>
-            <div id="msRowsContainer" style="display:contents;"></div>
-          </div>
-          <button class="btn btn-secondary" onclick="addMsRow()" style="margin-top:10px;padding:7px 14px;font-size:0.72rem;">＋ Add Row</button>
-        </div>
       </div>
 
       <!-- ── HE NORTH ── -->
@@ -650,16 +627,14 @@ function switchTab(tab) {
 // ── Lot Creator ───────────────────────────────────────────────────
 
 // Creator state
-let bolSource = 'coldzone';  // 'coldzone' | 'vertical' | 'midstates' | 'henorth'
+let bolSource = 'coldzone';  // 'coldzone' | 'vertical' | 'henorth'
 let creatorEntries = [];     // [{lot, date, dateUncertain}] — the final working set
 let czFlockCode = '';
-let msRowCounter = 0;
 
 // Source descriptions shown below the selector
 const BOL_DESCRIPTIONS = {
   coldzone:  'Digital PDF/screenshot. Columns: Pack ID | Cases | Plts | Item | Description | Prod | Exp | Lot No. | Weight. Extracts Pack ID (pallet) + Prod date. Lot = FLOCKCODE-PackID.',
   vertical:  'Digital PDF/screenshot. Columns: Quantity | Item | Description | Date | Lot | Net Weight | Gross Weight. Extracts the Lot column + Date column (YYMMDD → M/D/YY). Flock prefix prepended to lot.',
-  midstates: 'Handwritten BOL — manual entry only. Add rows and type lot number + lay date for each pallet. Flock prefix prepended to lot.',
   henorth:   'Printed/handwritten hybrid. Columns: Tag # | Egg Type | Lay Date. Tag format: CRITBA1 49406363. Lay Date: M-D-YY. Flock prefix prepended to lot.'
 };
 
@@ -667,18 +642,14 @@ const BOL_DESCRIPTIONS = {
 function selectBolSource(src) {
   bolSource = src;
   // Update button styles
-  ['coldzone','vertical','midstates','henorth'].forEach(s => {
+  ['coldzone','vertical','henorth'].forEach(s => {
     document.getElementById('src-' + s).classList.toggle('active', s === src);
     document.getElementById('input-' + s).style.display = s === src ? '' : 'none';
   });
   // Update badge + description
-  const labels = { coldzone: 'Cold Zone', vertical: 'Vertical', midstates: 'Mid States', henorth: 'HE North' };
+  const labels = { coldzone: 'Cold Zone', vertical: 'Vertical', henorth: 'HE North' };
   document.getElementById('badge-bol-source').textContent = labels[src];
   document.getElementById('srcDescription').textContent = BOL_DESCRIPTIONS[src];
-  // Seed a first row for Mid States if grid is empty
-  if (src === 'midstates' && document.getElementById('msRowsContainer').children.length === 0) {
-    addMsRow();
-  }
   // Reset creator entries when switching source
   creatorEntries = [];
   renderCreatorResults();
@@ -891,7 +862,6 @@ function parseDateDashed(raw) {
 
 // ── Manual input handler ──────────────────────────────────────────
 function onCreatorManualInput() {
-  if (bolSource === 'midstates') return; // Mid States has its own grid
   const taMap = { coldzone: 'czManualInput', vertical: 'vtManualInput', henorth: 'hnManualInput' };
   const raw = document.getElementById(taMap[bolSource]).value.trim();
   if (!raw) return;
@@ -922,54 +892,6 @@ function onCreatorManualInput() {
     parsed.push({ lot, date: dateObj.date, dateUncertain: dateObj.uncertain });
   });
   mergeCreatorEntries(parsed);
-  renderCreatorResults();
-}
-
-// ── Mid States manual grid ────────────────────────────────────────
-function addMsRow() {
-  const id = msRowCounter++;
-  const container = document.getElementById('msRowsContainer');
-  const lotInput = document.createElement('input');
-  lotInput.type = 'text';
-  lotInput.placeholder = 'e.g. ABCD-1234567';
-  lotInput.className = 'lot-cell ms-row';
-  lotInput.oninput = rebuildMidStates;
-
-  const dateInput = document.createElement('input');
-  dateInput.type = 'text';
-  dateInput.placeholder = '3/15/26';
-  dateInput.className = 'date-cell ms-row';
-  dateInput.oninput = rebuildMidStates;
-
-  const delBtn = document.createElement('button');
-  delBtn.className = 'del-btn ms-row';
-  delBtn.textContent = '✕';
-  delBtn.title = 'Remove row';
-  delBtn.onclick = function() {
-    lotInput.remove(); dateInput.remove(); delBtn.remove();
-    rebuildMidStates();
-  };
-
-  container.appendChild(lotInput);
-  container.appendChild(dateInput);
-  container.appendChild(delBtn);
-}
-
-function rebuildMidStates() {
-  const lotInputs  = document.querySelectorAll('#msRowsContainer .lot-cell');
-  const dateInputs = document.querySelectorAll('#msRowsContainer .date-cell');
-  const entries = [];
-  lotInputs.forEach((li, i) => {
-    let lot = li.value.trim().toUpperCase();
-    if (!lot) return;
-    if (czFlockCode && !lot.startsWith(czFlockCode + '-')) {
-      lot = czFlockCode + '-' + lot;
-    }
-    const rawDate = dateInputs[i] ? dateInputs[i].value.trim() : '';
-    const { date, uncertain } = parseDateMDY(rawDate);
-    entries.push({ lot, date: rawDate ? date : '', dateUncertain: !rawDate || uncertain });
-  });
-  creatorEntries = entries;
   renderCreatorResults();
 }
 
@@ -1091,9 +1013,6 @@ function clearCreator() {
   document.getElementById('vtFileInput').value = '';
   document.getElementById('vtManualInput').value = '';
   document.getElementById('vtDropZone').classList.remove('done','error-state','scanning');
-  // Mid States
-  document.getElementById('msRowsContainer').innerHTML = '';
-  msRowCounter = 0;
   // HE North
   document.getElementById('hnImgPreview').style.display = 'none';
   document.getElementById('hnScanStatus').textContent = '';
@@ -1118,7 +1037,7 @@ document.addEventListener('paste', function(e) {
     if (items[i].type.startsWith('image/')) {
       e.preventDefault();
       const file = items[i].getAsFile();
-      if (file && bolSource !== 'midstates') processCreatorImage(file, bolSource);
+      if (file) processCreatorImage(file, bolSource);
       break;
     }
   }
