@@ -57,10 +57,17 @@
   .search-bar input { flex: 1; background: transparent; border: none; outline: none; font-family: var(--mono); font-size: 0.8rem; color: var(--text); }
   .search-bar input::placeholder { color: var(--muted); }
   .search-bar .search-icon { color: var(--muted); font-size: 0.9rem; }
-  .search-results { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-top: -18px; margin-bottom: 24px; max-height: 200px; overflow-y: auto; display: none; }
-  .search-result-item { font-family: var(--mono); font-size: 0.75rem; padding: 5px 6px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .search-results { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; margin-top: -18px; margin-bottom: 24px; max-height: 320px; overflow-y: auto; display: none; }
+  .search-result-item { font-family: var(--mono); font-size: 0.75rem; padding: 7px 6px; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid transparent; }
+  .search-result-item + .search-result-item { border-top: 1px solid #222836; }
   .search-result-item:hover { background: var(--surface); }
-  .search-result-item .lot-val { color: var(--accent2); }
+  .search-result-item .lot-val { color: var(--accent2); font-weight: 600; min-width: 160px; }
+  .search-result-item .sr-info { display: flex; align-items: center; gap: 8px; flex: 1; flex-wrap: wrap; }
+  .search-result-item .sr-qty { font-size: 0.72rem; color: var(--text); min-width: 54px; text-align: right; }
+  .search-result-item .sr-qty.zero { color: var(--danger); }
+  .search-result-item .sr-tag { font-size: 0.66rem; padding: 2px 7px; border-radius: 3px; background: var(--surface); color: var(--muted); letter-spacing: 0.02em; white-space: nowrap; }
+  .search-result-item .sr-tag.egg { color: #fbbf24; background: #2a1f00; }
+  .search-result-item .sr-tag.loc { color: #a78bfa; background: #1e1633; }
   .search-result-item .copy-btn { flex-shrink: 0; }
   .search-no-results { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); padding: 8px 6px; }
 
@@ -250,7 +257,7 @@
   <!-- Lot search -->
   <div class="search-bar">
     <span class="search-icon">🔍</span>
-    <input type="text" id="lotSearch" placeholder="Search BC lots for reference (e.g. 2361685 or MSSE)..." oninput="searchLots()" autocomplete="off"/>
+    <input type="text" id="lotSearch" placeholder="Search by lot #, egg type, or location (e.g. 2361685, MSSE, COLD-A)..." oninput="searchLots()" autocomplete="off"/>
     <span style="font-family:var(--mono);font-size:0.65rem;color:var(--muted)" id="searchCount"></span>
   </div>
   <div class="search-results" id="searchResults"></div>
@@ -317,13 +324,13 @@
     </div>
     <table>
       <thead>
-        <tr><th>Pallet</th><th>BC Lot Number</th><th>Qty Available</th><th>Status</th><th>Copy</th></tr>
+        <tr><th>Pallet</th><th>BC Lot Number</th><th>Qty Available</th><th>Egg Type</th><th>Location</th><th>Status</th><th>Copy</th></tr>
       </thead>
       <tbody id="resultBody"></tbody>
     </table>
     <div class="copy-all-wrap" style="flex-direction:column;gap:14px;">
       <div style="width:100%">
-        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Lot + Quantity (tab-separated)</div>
+        <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:6px;letter-spacing:0.06em;text-transform:uppercase;">📋 Paste into Business Central — Availability Lot No + Lot No + Quantity (tab-separated)</div>
         <div style="display:flex;gap:10px;align-items:flex-start;">
           <div class="big-copy-area" id="allLotsBox" onclick="copyAllLots()" style="max-height:160px;font-size:0.72rem;">—</div>
           <button class="btn btn-success" onclick="copyAllLots()" style="white-space:nowrap;flex-shrink:0;">⧉ Copy All<br><span style="font-size:0.65rem;font-weight:400">for BC paste</span></button>
@@ -477,6 +484,8 @@ let activeCompany = localStorage.getItem('lm_company') || 'HE SOUTH';
 let parsedLots = [];
 let parsedPallets = [];
 let lotQtyMap = {};
+let lotEggTypeMap = {};
+let lotLocationMap = {};
 
 function getFarmPrefixMap() {
   return JSON.parse(localStorage.getItem(`lotmatcher_prefixes_${activeCompany}`) || '{}');
@@ -526,6 +535,8 @@ function switchCompany(name) {
   updateCompanyUI();
   parsedLots = [];
   lotQtyMap = {};
+  lotEggTypeMap = {};
+  lotLocationMap = {};
   parsedPallets = [];
   document.getElementById('palletInput').value = '';
   document.getElementById('badge-pallets').textContent = '0 rows';
@@ -574,26 +585,74 @@ async function syncLots() {
       || keys[0];
     const qtyKey = keys.find(k => k.toLowerCase().includes('quantity') || k.toLowerCase().includes('qty') || k.toLowerCase().includes('remaining'))
       || null;
+    // Detect egg type column: "Egg Type", "EggType", "egg_type", "Type", or "Item_No"/"Item No"/"Item"
+    // (Item_No is the BC item code that represents egg type, e.g. E-UG-FR)
+    // Ignore phantom __EMPTY columns that Excel pivot tables leave behind
+    const realKeys = keys.filter(k => !k.startsWith('__EMPTY'));
+    const eggTypeKey = realKeys.find(k => {
+      const lk = k.toLowerCase().replace(/[_\s]+/g,'');
+      return lk === 'eggtype' || lk === 'type' || lk.includes('eggtype')
+          || lk === 'itemno' || lk === 'item' || lk === 'itemcode' || lk === 'itemnumber';
+    }) || null;
+    // Detect location column: "Location", "Location_Code", "Loc", "Warehouse", "Bin", "Zone"
+    const locationKey = realKeys.find(k => {
+      const lk = k.toLowerCase();
+      return lk.includes('location') || lk.includes('warehouse') || lk === 'loc' ||
+             lk === 'bin' || lk === 'zone' || lk === 'whse' || lk === 'wh';
+    }) || null;
+
+    // Matches a valid lot string like "3012-2394703" or "MSSE-1234567"
+    const lotShapeRe = /^(\d{4}|[A-Z]{2,6})[ -].+/;
+    // Matches pivot-table subtotal/grand-total rows in any column, e.g. "3012-2394703 Total", "E-UG-FR Total", "Grand Total"
+    const subtotalRe = /\b(?:Grand\s+)?Total\s*$/i;
 
     const lotData = rows
       .map(r => ({
         lot: String(r[lotKey] || '').trim(),
-        qty: qtyKey ? (Number(r[qtyKey]) || 0) : null
+        qty: qtyKey ? (Number(r[qtyKey]) || 0) : null,
+        eggType: eggTypeKey ? String(r[eggTypeKey] || '').trim() : '',
+        location: locationKey ? String(r[locationKey] || '').trim() : ''
       }))
-      .filter(r => /^(\d{4}|[A-Z]{2,6})[ -].+/.test(r.lot) && r.lot.length > 4);
+      .filter(r => {
+        if (!lotShapeRe.test(r.lot) || r.lot.length <= 4) return false;
+        // Reject pivot subtotal rows like "3012-2394703 Total" or rows where
+        // the egg type / location field holds a subtotal marker ("E-UG-FR Total")
+        if (subtotalRe.test(r.lot)) return false;
+        if (r.eggType && subtotalRe.test(r.eggType)) return false;
+        if (r.location && subtotalRe.test(r.location)) return false;
+        return true;
+      });
 
     if (!lotData.length) throw new Error(`No BC lot numbers found. Column: "${lotKey}".`);
     parsedLots = parseLotInput(lotData.map(r => r.lot).join('\n'));
 
-    // Build quantity lookup map
+    // Build lookup maps: quantity, egg type, location
     lotQtyMap = {};
-    lotData.forEach(r => { lotQtyMap[r.lot] = r.qty; });
+    lotEggTypeMap = {};
+    lotLocationMap = {};
+    lotData.forEach(r => {
+      lotQtyMap[r.lot] = r.qty;
+      if (r.eggType) lotEggTypeMap[r.lot] = r.eggType;
+      if (r.location) lotLocationMap[r.lot] = r.location;
+    });
 
-    setStatus('synced', `✓ ${lotData.length} lots loaded`);
+    // Show which extra columns were detected (for sanity-checking after a file upload)
+    const extras = [];
+    if (eggTypeKey) extras.push(`egg type: ${eggTypeKey}`);
+    if (locationKey) extras.push(`location: ${locationKey}`);
+    const extrasNote = extras.length ? ` · ${extras.join(' · ')}` : '';
+    setStatus('synced', `✓ ${lotData.length} lots loaded${extrasNote}`);
     document.getElementById('badge-lots').textContent = `${lotData.length} lots`;
     document.getElementById('badge-lots').className = 'badge loaded';
-    const preview = lotData.slice(0,10).map(r => r.lot + (r.qty !== null ? ` (${r.qty.toLocaleString()})` : '')).join('\n')
-      + (lotData.length > 10 ? `\n… +${lotData.length-10} more` : '');
+    const preview = lotData.slice(0,10).map(r => {
+      let line = r.lot;
+      if (r.qty !== null) line += ` (${r.qty.toLocaleString()})`;
+      const tags = [];
+      if (r.eggType) tags.push(r.eggType);
+      if (r.location) tags.push(r.location);
+      if (tags.length) line += ` · ${tags.join(' · ')}`;
+      return line;
+    }).join('\n') + (lotData.length > 10 ? `\n… +${lotData.length-10} more` : '');
     document.getElementById('lotPanel').innerHTML = `
       <div class="lot-preview-panel">
         <span class="ok-label">✓ ${lotData.length} BC lots loaded</span>
@@ -1086,16 +1145,35 @@ function searchLots() {
     resultsEl.style.display = 'block';
     return;
   }
-  const matches = parsedLots.filter(l => l.full.toLowerCase().includes(q));
+  const matches = parsedLots.filter(l => {
+    if (l.full.toLowerCase().includes(q)) return true;
+    const egg = (lotEggTypeMap[l.full] || '').toLowerCase();
+    const loc = (lotLocationMap[l.full] || '').toLowerCase();
+    return egg.includes(q) || loc.includes(q);
+  });
   countEl.textContent = matches.length ? `${matches.length} found` : '';
   if (!matches.length) {
     resultsEl.innerHTML = '<div class="search-no-results">No lots found matching that query.</div>';
   } else {
-    resultsEl.innerHTML = matches.slice(0, 50).map(l => `
+    resultsEl.innerHTML = matches.slice(0, 50).map(l => {
+      const qty = lotQtyMap[l.full];
+      const egg = lotEggTypeMap[l.full];
+      const loc = lotLocationMap[l.full];
+      const qtyStr = qty !== undefined && qty !== null ? qty.toLocaleString() : '—';
+      const qtyClass = (qty === 0) ? 'sr-qty zero' : 'sr-qty';
+      const eggTag = egg ? `<span class="sr-tag egg">${egg}</span>` : '';
+      const locTag = loc ? `<span class="sr-tag loc">${loc}</span>` : '';
+      return `
       <div class="search-result-item">
         <span class="lot-val">${highlight(l.full, q)}</span>
+        <div class="sr-info">
+          <span class="${qtyClass}">${qtyStr}</span>
+          ${eggTag}
+          ${locTag}
+        </div>
         <button class="copy-btn" onclick="copySingle(this,'${l.full.replace(/'/g,"\\'")}')">copy</button>
-      </div>`).join('') + (matches.length > 50 ? `<div class="search-no-results">… and ${matches.length-50} more. Refine your search.</div>` : '');
+      </div>`;
+    }).join('') + (matches.length > 50 ? `<div class="search-no-results">… and ${matches.length-50} more. Refine your search.</div>` : '');
   }
   resultsEl.style.display = 'block';
 }
@@ -1297,18 +1375,36 @@ function runMatch() {
     const tr = document.createElement('tr');
     const qty = r.status==='OK' && lotQtyMap[r.result] !== undefined ? lotQtyMap[r.result]?.toLocaleString() : '—';
     const qtyColor = r.status==='OK' ? (lotQtyMap[r.result] > 0 ? 'var(--accent2)' : 'var(--danger)') : 'var(--muted)';
+    // Egg type: for OK rows show the single lot's type; for AMBIGUOUS show all distinct types
+    let eggTypeCell = '—';
+    if (r.status === 'OK' && lotEggTypeMap[r.result]) {
+      eggTypeCell = lotEggTypeMap[r.result];
+    } else if (r.status === 'AMBIGUOUS' && r.result) {
+      const types = [...new Set(r.result.split(' | ').map(lot => lotEggTypeMap[lot]).filter(Boolean))];
+      if (types.length) eggTypeCell = types.join(' | ');
+    }
+    // Location: same pattern
+    let locationCell = '—';
+    if (r.status === 'OK' && lotLocationMap[r.result]) {
+      locationCell = lotLocationMap[r.result];
+    } else if (r.status === 'AMBIGUOUS' && r.result) {
+      const locs = [...new Set(r.result.split(' | ').map(lot => lotLocationMap[lot]).filter(Boolean))];
+      if (locs.length) locationCell = locs.join(' | ');
+    }
     tr.innerHTML = `
       <td style="font-weight:600">${r.pallet}</td>
       <td class="${lc}">${r.result||'—'}</td>
       <td style="font-family:var(--mono);font-weight:600;color:${qtyColor}">${qty}</td>
+      <td style="font-family:var(--mono);color:var(--text)">${eggTypeCell}</td>
+      <td style="font-family:var(--mono);color:var(--text)">${locationCell}</td>
       <td><span class="status-pill ${sc}">${r.status}</span></td>
-      <td>${r.status==='OK'?`<button class="copy-btn" onclick="copySingle(this,'${safe}\t${lotQtyMap[r.result]||0}')">copy row</button>`:''}</td>`;
+      <td>${r.status==='OK'?`<button class="copy-btn" onclick="copySingle(this,'TRUE\t${safe}\t${lotQtyMap[r.result]||0}')">copy row</button>`:''}</td>`;
     tbody.appendChild(tr);
   });
 
   const okRows = rows.filter(r=>r.status==='OK');
-  // Tab-separated for BC paste (Lot[TAB]Qty)
-  const bcPasteLines = okRows.map(r => `${r.result}\t${lotQtyMap[r.result]||0}`);
+  // Tab-separated for BC paste: Availability Lot No (TRUE) [TAB] Lot No [TAB] Qty
+  const bcPasteLines = okRows.map(r => `TRUE\t${r.result}\t${lotQtyMap[r.result]||0}`);
   document.getElementById('allLotsBox').textContent = bcPasteLines.length ? bcPasteLines.join('\n') : 'No matched lots yet.';
   // Lots only
   document.getElementById('lotsOnlyBox').textContent = okRows.length ? okRows.map(r=>r.result).join('\n') : 'No matched lots yet.';
@@ -1343,6 +1439,8 @@ function copyLotsOnly() {
 
 function clearAll() {
   lotQtyMap = {};
+  lotEggTypeMap = {};
+  lotLocationMap = {};
   document.getElementById('palletInput').value='';
   document.getElementById('badge-pallets').textContent='0 rows';
   document.getElementById('badge-pallets').className='badge';
