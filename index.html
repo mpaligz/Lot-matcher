@@ -280,7 +280,7 @@
         <div class="scan-status" id="scanStatus"></div>
       </div>
       <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:4px 0 6px;">— or paste manually below —</div>
-      <textarea id="palletInput" placeholder="Paste pallet numbers manually:&#10;2353580&#10;2361684&#10;2361695&#10;..."></textarea>
+      <textarea id="palletInput" placeholder="Paste pallet numbers manually:&#10;2353580&#10;2361684&#10;IP00911OT0000803&#10;..."></textarea>
     </div>
 
     <!-- BC Lots panel -->
@@ -362,7 +362,7 @@
         <button class="bol-src-btn" id="src-henorth" onclick="selectBolSource('henorth')">HE North</button>
       </div>
       <div style="padding:0 16px 14px;font-family:var(--mono);font-size:0.68rem;color:var(--muted)" id="srcDescription">
-        Digital PDF/screenshot. Columns: Pack ID | Cases | Plts | Item | Description | Prod | Exp | Lot No. | Weight. Extracts Pack ID (pallet) + Prod date. Requires flock prefix.
+        Digital PDF/screenshot. Columns: Pack ID | Cases | Plts | Item | Description | Prod | Exp | Lot No. | Weight. Extracts Pack ID (pallet) + Prod date. 7-digit Pack IDs use the flock prefix; 16-char IP Pack IDs auto-look up their flock.
       </div>
     </div>
 
@@ -393,7 +393,7 @@
           <div class="scan-status" id="czScanStatus"></div>
         </div>
         <div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);text-align:center;padding:6px 0 4px;">— or enter manually below (PackID TAB ProdDate, one per line) —</div>
-        <textarea id="czManualInput" placeholder="4567890&#9;3/15/2026&#10;4567891&#9;3/16/2026" style="height:100px;" oninput="onCreatorManualInput()"></textarea>
+        <textarea id="czManualInput" placeholder="4567890&#9;3/15/2026&#10;IP00941OT0000008&#9;3/16/2026" style="height:100px;" oninput="onCreatorManualInput()"></textarea>
       </div>
 
       <!-- ── VERTICAL ── -->
@@ -601,8 +601,8 @@ async function syncLots() {
              lk === 'bin' || lk === 'zone' || lk === 'whse' || lk === 'wh';
     }) || null;
 
-    // Matches a valid lot string like "3012-2394703" or "MSSE-1234567"
-    const lotShapeRe = /^(\d{4}|[A-Z]{2,6})[ -].+/;
+    // Matches a valid lot string like "3012-2394703", "MSSE-1234567", or "CRITBAZ 50109828"
+    const lotShapeRe = /^(\d{4}|[A-Z]{2,7})[ -].+/;
     // Matches pivot-table subtotal/grand-total rows in any column, e.g. "3012-2394703 Total", "E-UG-FR Total", "Grand Total"
     const subtotalRe = /\b(?:Grand\s+)?Total\s*$/i;
 
@@ -692,10 +692,60 @@ let czFlockCode = '';
 
 // Source descriptions shown below the selector
 const BOL_DESCRIPTIONS = {
-  coldzone:  'Digital PDF/screenshot. Columns: Pack ID | Cases | Plts | Item | Description | Prod | Exp | Lot No. | Weight. Extracts Pack ID (pallet) + Prod date. Lot = FLOCKCODE-PackID.',
+  coldzone:  'Digital PDF/screenshot. Columns: Pack ID | Cases | Plts | Item | Description | Prod | Exp | Lot No. | Weight. Extracts Pack ID (pallet) + Prod date. 7-digit Pack IDs: Lot = FLOCKCODE-PackID. 16-char IP Pack IDs: flock auto-looked-up, Lot = FLOCK-PackID.',
   vertical:  'Digital PDF/screenshot. Columns: Quantity | Item | Description | Date | Lot | Net Weight | Gross Weight. Extracts the Lot column + Date column (YYMMDD → M/D/YY). Flock prefix prepended to lot.',
   henorth:   'Printed/handwritten hybrid. Columns: Tag # | Egg Type | Lay Date. Tag format: CRITBA1 49406363. Lay Date: M-D-YY. Flock prefix prepended to lot.'
 };
+
+// ── IP Pack ID → ExternalFlockID lookup ───────────────────────────
+// Compact run-length-encoded table built from Pallet_Tags_Printed (Sheet1).
+// Key = 5-char supplier code (positions 2-6 of the 16-char IPCode).
+// Value = [[flockId, startSerial, endSerial], ...] — serial is positions 9-15
+//         of the IPCode parsed as an integer. All 40,769 source rows compress
+//         into 157 runs because serials are almost always contiguous per flock.
+// To refresh: re-export Pallet_Tags_Printed.xlsx, regenerate this literal.
+const IP_LOOKUP = /*__IP_LOOKUP_START__*/{"00941":[[3201,1,1233]],"00231":[[3024,8,17]],"00081":[[3031,1,2]],"00171":[[3045,4,6]],"01141":[[3033,1,1],[3038,2,4],[3033,5,5]],"00731":[[3891,2,2]],"00071":[[3116,1,2],[3160,3,5],[3116,6,615]],"00391":[[3029,1,203]],"00271":[[3200,19,626]],"00351":[[3085,8,12],[3085,14,515]],"01191":[[3030,1,3]],"00331":[[3193,10,511]],"00241":[[3167,10,12]],"00011":[[3174,5,6]],"00031":[[3025,1,1],[3111,2,3],[3931,4,663]],"00511":[[3178,1,2]],"00401":[[3086,2,504]],"00451":[[3166,4,4],[3165,5,5],[3164,6,6],[3166,7,7],[3165,8,8],[3164,9,9]],"00581":[[3891,7,7],[3119,8,1408]],"00911":[[3520,1,2],[3194,3,503],[3520,504,803]],"00851":[[3034,1,1],[3038,2,2]],"01101":[[3033,1,1]],"01061":[[4217,1,701]],"00751":[[3041,33,433]],"00491":[[3527,10,10],[3026,11,12],[3527,13,13],[3026,14,217],[3527,218,717],[3026,718,1017]],"00971":[[3013,1,1]],"01071":[[3187,1,401]],"01271":[[3198,1,712]],"00571":[[3106,1,1],[3048,2,3],[3106,4,609],[3048,610,909]],"00021":[[3186,27,427]],"00881":[[3094,1,601]],"00721":[[3185,1,1],[3052,2,402],[3185,403,1215],[3052,1216,1615]],"00361":[[3014,1,1],[3037,2,302]],"01181":[[3122,1,1],[3123,2,2],[3122,3,609],[3532,610,1210],[3122,1211,1211]],"00711":[[3265,1,1],[3264,2,2],[3265,3,3],[3168,4,4],[3264,5,5],[3265,6,607],[3264,608,1207]],"01161":[[3189,3,503]],"00151":[[3109,1,602]],"00191":[[3634,1,602]],"00811":[[3126,1,702]],"00441":[[3004,1,1],[3145,2,701]],"00061":[[3121,12,1413]],"00411":[[3117,1,1],[3529,2,601]],"00371":[[3162,3,3],[3163,4,4],[3139,5,6],[3141,7,7],[3139,8,9],[3141,10,215],[3146,216,216],[3141,217,217],[3149,218,218],[3146,219,219],[3149,220,319],[3146,320,419]],"00341":[[3090,1,601]],"00311":[[3195,5,605]],"00551":[[3019,1,1]],"00211":[[3095,1,501]],"01171":[[3519,1,1],[3079,2,2],[3519,3,402],[3079,403,902]],"00921":[[3525,1,501]],"00561":[[3528,1,501]],"00471":[[3190,15,15],[3081,16,517]],"00651":[[3196,1,1],[3101,2,602],[3196,603,1202]],"01091":[[3070,1,501]],"01211":[[3183,1,401]],"00681":[[3531,1,601]],"00821":[[3012,1,1],[3203,2,1401]],"00201":[[3197,17,618]],"00591":[[3124,1,701]],"00051":[[3176,2,4]],"00161":[[3027,2,2]],"01221":[[3062,1,1],[3018,2,2]],"01241":[[3036,1,1]],"00641":[[3521,1,401]],"01291":[[3130,1,601]],"01121":[[3192,1,1],[3191,2,2]],"01151":[[3021,1,1]],"00761":[[3522,12,12],[3023,13,13],[3170,14,14],[3522,15,414]],"00131":[[3175,2,2]],"01131":[[3632,1,601]],"00781":[[3177,1,1]],"00141":[[3091,1,501]],"00461":[[3074,10,510]],"00891":[[3016,1,1]],"00531":[[3114,3,603]],"00541":[[3028,12,12]],"00691":[[3832,1,1]],"00111":[[3518,1,1]],"00901":[[3134,1,11]],"00931":[[3629,1,401]],"01051":[[3051,1,1],[3066,2,2]],"01011":[[3136,1,5]],"01231":[[3022,1,1]],"00801":[[3096,1,601]],"00611":[[3010,1,1],[3017,2,2]],"00601":[[3517,1,1]],"00301":[[3184,6,407]],"01411":[[3131,1,703]],"00771":[[3099,1,600]],"01381":[[3188,1,500],[3524,501,1000]],"01401":[[3635,1,1815]],"00741":[[3865,1,3]]}/*__IP_LOOKUP_END__*/;
+
+// Returns the ExternalFlockID as a string for a 16-char IP Pack ID,
+// or null if the code isn't recognized / isn't a valid IP code.
+function lookupIpFlock(packId) {
+  if (typeof packId !== 'string') return null;
+  if (packId.length !== 16 || packId.slice(0,2) !== 'IP' || packId.slice(7,9) !== 'OT') return null;
+  const supplier = packId.slice(2,7);
+  const runs = IP_LOOKUP[supplier];
+  if (!runs) return null;
+  const serialStr = packId.slice(9,16);
+  if (!/^\d{7}$/.test(serialStr)) return null;
+  const serial = parseInt(serialStr, 10);
+  for (let i = 0; i < runs.length; i++) {
+    const r = runs[i];
+    if (serial >= r[1] && serial <= r[2]) return String(r[0]);
+  }
+  return null;
+}
+
+// True if a raw Pack ID string looks like a 16-char IP code.
+function isIpPackId(s) {
+  return typeof s === 'string' && s.length === 16 && s.slice(0,2) === 'IP' && s.slice(7,9) === 'OT';
+}
+
+// Build the full Cold Zone lot string from a raw Pack ID and the
+// user-entered flock prefix. Returns null if we have a 7-digit Pack ID
+// but no prefix yet (caller decides how to handle that).
+function buildColdZoneLot(rawPackId, userPrefix) {
+  if (isIpPackId(rawPackId)) {
+    const mapped = lookupIpFlock(rawPackId);
+    if (mapped) return mapped + '-' + rawPackId;
+    // Unknown IP code — fall back to userPrefix if available, else return
+    // the raw code so the user sees it and can intervene.
+    if (userPrefix) return userPrefix + '-' + rawPackId;
+    return rawPackId;
+  }
+  // Non-IP (7-digit) case — needs a prefix.
+  if (!userPrefix) return null;
+  if (rawPackId.startsWith(userPrefix + '-')) return rawPackId;
+  return userPrefix + '-' + rawPackId;
+}
 
 // ── Source selection ──────────────────────────────────────────────
 function selectBolSource(src) {
@@ -725,6 +775,10 @@ function onCzFlockInput() {
   } else {
     preview.textContent = 'Enter a flock code to preview lot format';
   }
+  // Re-apply prefix to any Cold Zone entries waiting on a flock code
+  // (7-digit Pack IDs). IP-based entries already have their flock resolved
+  // from the lookup and stay unchanged.
+  refreshColdZoneLots();
   // Rebuild results if we already have scanned data
   if (creatorEntries.length) renderCreatorResults();
 }
@@ -803,17 +857,98 @@ function parseOcrText(rawText, src) {
   return [];
 }
 
-// Cold Zone: extract 7-digit Pack ID + M/D/YYYY Prod date
-// Builds lot as czFlockCode-PackID
+// Cold Zone: extract Pack ID (7-digit numeric OR 16-char "IP…OT…" code)
+// + M/D/YYYY Prod date. Lot is built later from rawPackId by
+// buildColdZoneLot() so the user prefix can be applied or looked up.
+//
+// IP codes are extracted with a tolerant normalizer because Tesseract
+// frequently mangles them — e.g. "IP00341OT0000588" becomes "P003410T0000588"
+// (leading "I" dropped, letter "O" in "OT" read as digit "0"). The canonical
+// structure is fixed — 16 chars: "IP" + 5 digits + 2-letter delimiter + 7 digits — so we
+// locate the delimiter landmark, normalize stray O↔0 in the digit regions, and
+// reconstruct the clean code.
+//
+// `strict` (default true) restricts the 2-letter delimiter to "OT" — used by the
+// Lot Creator workflow which only knows about OT-style codes via IP_LOOKUP. The
+// Matcher passes strict=false so it can also accept newer delimiters like "MM".
+function normalizeIpToken(token, strict) {
+  if (strict === undefined) strict = true;
+  const t = token.toUpperCase();
+  // Try each plausible position of the delimiter's 2nd letter (indexes 7..10
+  // to tolerate a missing or added leading character).
+  for (let posDelim2 = 7; posDelim2 <= 10; posDelim2++) {
+    if (posDelim2 >= t.length) continue;
+    const delim2 = t[posDelim2];
+    const delim1 = t[posDelim2 - 1];
+    if (strict) {
+      if (delim2 !== 'T') continue;
+      if (delim1 !== 'O' && delim1 !== '0') continue;
+    } else {
+      // Lenient: any A-Z pair, plus tolerate the common Tesseract O→0 misread
+      // in the first delimiter slot (so "0T" rebuilds to "OT").
+      if (!/[A-Z]/.test(delim2)) continue;
+      if (!/[A-Z0]/.test(delim1)) continue;
+    }
+    const supplierStart = posDelim2 - 1 - 5;
+    if (supplierStart < 0) continue;
+    const supplier = t.substring(supplierStart, posDelim2 - 1).replace(/O/g, '0');
+    const serial   = t.substring(posDelim2 + 1, posDelim2 + 1 + 7).replace(/O/g, '0');
+    if (!/^\d{5}$/.test(supplier)) continue;
+    if (!/^\d{7}$/.test(serial))   continue;
+    // In lenient mode, recover the OT pair when delim1 was '0' (only meaningful
+    // if delim2 is T); otherwise keep the delimiter as-read.
+    let delimOut;
+    if (strict) {
+      delimOut = 'OT';
+    } else {
+      const d1 = (delim1 === '0' && delim2 === 'T') ? 'O' : delim1;
+      delimOut = d1 + delim2;
+    }
+    return 'IP' + supplier + delimOut + serial;
+  }
+  return null;
+}
+
 function parseColdZoneOcr(text) {
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const dateRx = /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/;
+  // Candidate tokens for an IP code — 14-17 alphanumerics. We then feed each
+  // through normalizeIpToken() to rebuild the canonical 16-char form.
+  const ipCandidateRx = /[A-Za-z0-9]{14,17}/g;
+  const sevenRx = /\b(\d{7})\b/;
   const results = [];
   const seen = new Set();
   lines.forEach((line, idx) => {
-    const idMatch = line.match(/\b(\d{7})\b/);
-    if (!idMatch) return;
-    const packId = idMatch[1];
+    // Prefer IP code if any candidate token on the line normalizes and
+    // resolves in the lookup table (confirms it's really an IP code, not a
+    // stray 14-char garbage string). Fall back to a structural match if no
+    // candidate resolves, fall back to 7-digit if no IP match at all.
+    let packId = null;
+    const cands = line.match(ipCandidateRx) || [];
+    // First pass — prefer one that resolves against the lookup table
+    for (const c of cands) {
+      const norm = normalizeIpToken(c);
+      if (norm && lookupIpFlock(norm)) { packId = norm; break; }
+    }
+    // Second pass — any structurally-valid IP code (unknown codes still get
+    // returned; the downstream buildColdZoneLot() will warn or fall back).
+    if (!packId) {
+      for (const c of cands) {
+        const norm = normalizeIpToken(c);
+        if (norm) { packId = norm; break; }
+      }
+    }
+    // Fallback — plain 7-digit pack ID. Skip if this line looks like it held
+    // a failed IP candidate (avoids grabbing the serial tail as a fake ID).
+    if (!packId && cands.length === 0) {
+      const idMatch = line.match(sevenRx);
+      if (idMatch) packId = idMatch[1];
+    } else if (!packId) {
+      // Line had long tokens but none looked IP-shaped — still try 7-digit.
+      const idMatch = line.match(sevenRx);
+      if (idMatch) packId = idMatch[1];
+    }
+    if (!packId) return;
     if (seen.has(packId)) return;
     seen.add(packId);
     // Look for date on this line or next
@@ -826,7 +961,8 @@ function parseColdZoneOcr(text) {
       if (ndm) rawDate = ndm[0];
     }
     const { date, uncertain } = parseDateMDY(rawDate);
-    results.push({ lot: packId, date, dateUncertain: uncertain });
+    // For Cold Zone we emit rawPackId so prefixing happens downstream.
+    results.push({ rawPackId: packId, date, dateUncertain: uncertain });
   });
   return results;
 }
@@ -930,16 +1066,8 @@ function onCreatorManualInput() {
   lines.forEach(line => {
     const parts = line.split(/\t/);
     if (parts.length < 1 || !parts[0].trim()) return;
-    let lot = parts[0].trim();
+    let first = parts[0].trim();
     let rawDate = parts[1] ? parts[1].trim() : '';
-    // Normalise case
-    if (bolSource !== 'coldzone') lot = lot.toUpperCase();
-    // Prepend flock prefix for all sources if set and not already present
-    if (czFlockCode && !lot.startsWith(czFlockCode + '-')) {
-      lot = czFlockCode + '-' + lot;
-    }
-    if (seen.has(lot)) return;
-    seen.add(lot);
     let dateObj;
     if (bolSource === 'vertical' && rawDate.length === 6 && /^\d{6}$/.test(rawDate)) {
       dateObj = parseDateYYMMDD(rawDate);
@@ -948,26 +1076,90 @@ function onCreatorManualInput() {
     } else {
       dateObj = parseDateMDY(rawDate);
     }
-    parsed.push({ lot, date: dateObj.date, dateUncertain: dateObj.uncertain });
+    if (bolSource === 'coldzone') {
+      // Cold Zone: emit raw Pack ID; mergeCreatorEntries will build the lot.
+      // IP codes keep their case; strip any leading prefix the user may have
+      // already typed so the canonical raw form is stored.
+      let packId = first;
+      // If user pasted "3024-4567890" or "3024-IP00941OT0000008", split it.
+      const dashIdx = packId.indexOf('-');
+      if (dashIdx > 0 && dashIdx < packId.length - 1) {
+        const after = packId.slice(dashIdx + 1);
+        if (/^\d{7}$/.test(after) || isIpPackId(after)) {
+          packId = after;
+        }
+      }
+      const key = packId; // dedupe on raw Pack ID within this batch
+      if (seen.has(key)) return;
+      seen.add(key);
+      parsed.push({ rawPackId: packId, date: dateObj.date, dateUncertain: dateObj.uncertain });
+    } else {
+      // Vertical / HE North — existing behaviour: uppercase lot, prefix
+      // handled at merge time.
+      let lot = first.toUpperCase();
+      if (seen.has(lot)) return;
+      seen.add(lot);
+      parsed.push({ lot, date: dateObj.date, dateUncertain: dateObj.uncertain });
+    }
   });
   mergeCreatorEntries(parsed);
   renderCreatorResults();
 }
 
 // ── Entry management ──────────────────────────────────────────────
+// Entries stored in creatorEntries always carry:
+//   - lot           : displayed BC lot string (may be partial if coldzone
+//                     non-IP and no flock prefix set yet)
+//   - date, dateUncertain
+//   - rawPackId     : present for coldzone entries only; canonical key
+// For non-coldzone sources, dedup key is the prefixed lot (as before).
 function mergeCreatorEntries(newEntries) {
-  const existing = new Map(creatorEntries.map(e => [e.lot, e]));
+  // Build the existing map using whichever key is canonical for each entry.
+  const keyOf = (e) => (e.rawPackId !== undefined) ? 'pid:' + e.rawPackId : 'lot:' + e.lot;
+  const existing = new Map(creatorEntries.map(e => [keyOf(e), e]));
+
   newEntries.forEach(e => {
-    // Prepend flock prefix to lot if we have one and it's not already there
-    let lot = e.lot;
-    if (czFlockCode && !lot.startsWith(czFlockCode + '-')) {
-      lot = czFlockCode + '-' + lot;
-    }
-    if (!existing.has(lot)) {
-      existing.set(lot, { lot, date: e.date, dateUncertain: e.dateUncertain });
+    if (e.rawPackId !== undefined) {
+      // Cold Zone path — compute (or re-compute) the lot from raw Pack ID.
+      const lot = buildColdZoneLot(e.rawPackId, czFlockCode);
+      const k = 'pid:' + e.rawPackId;
+      if (!existing.has(k)) {
+        existing.set(k, {
+          rawPackId: e.rawPackId,
+          lot: lot !== null ? lot : e.rawPackId,
+          lotPending: lot === null,  // true when 7-digit with no prefix yet
+          date: e.date,
+          dateUncertain: e.dateUncertain
+        });
+      }
+    } else {
+      // Other sources — original behaviour: prepend flock prefix if any.
+      let lot = e.lot;
+      if (czFlockCode && !lot.startsWith(czFlockCode + '-')) {
+        lot = czFlockCode + '-' + lot;
+      }
+      const k = 'lot:' + lot;
+      if (!existing.has(k)) {
+        existing.set(k, { lot, date: e.date, dateUncertain: e.dateUncertain });
+      }
     }
   });
   creatorEntries = [...existing.values()];
+}
+
+// Recompute Cold Zone entry lots from their raw Pack IDs. Called whenever
+// czFlockCode changes so that 7-digit entries waiting on a prefix get
+// resolved, and IP entries stay stable.
+function refreshColdZoneLots() {
+  creatorEntries = creatorEntries.map(e => {
+    if (e.rawPackId === undefined) return e;
+    const lot = buildColdZoneLot(e.rawPackId, czFlockCode);
+    return {
+      ...e,
+      lot: lot !== null ? lot : e.rawPackId,
+      lotPending: lot === null
+    };
+  });
 }
 
 // ── Render results table ──────────────────────────────────────────
@@ -977,17 +1169,12 @@ function renderCreatorResults() {
   const badge = document.getElementById('badge-created');
   const copyBox = document.getElementById('creatorCopyBox');
 
-  // Require a flock code on all sources
-  if (!czFlockCode && creatorEntries.length === 0) {
-    list.innerHTML = '<div class="created-lot-empty" style="padding:14px 16px">Enter a flock code above, then add pallet data via screenshot or manual entry.</div>';
-    badge.textContent = '0 lots'; badge.className = 'badge';
-    box.textContent = '—'; copyBox.style.display = 'none';
-    updateCreatorBadge();
-    return;
-  }
-
+  // Empty state
   if (!creatorEntries.length) {
-    list.innerHTML = '<div class="created-lot-empty" style="padding:14px 16px">No lots generated yet. Add data via screenshot or manual entry above.</div>';
+    const msg = !czFlockCode
+      ? 'Enter a flock code above (required for 7-digit Pack IDs; IP-prefixed Pack IDs look up their flock automatically), then add pallet data via screenshot or manual entry.'
+      : 'No lots generated yet. Add data via screenshot or manual entry above.';
+    list.innerHTML = '<div class="created-lot-empty" style="padding:14px 16px">' + msg + '</div>';
     badge.textContent = '0 lots'; badge.className = 'badge';
     box.textContent = '—'; copyBox.style.display = 'none';
     updateCreatorBadge();
@@ -1000,24 +1187,31 @@ function renderCreatorResults() {
 
   // Build table rows
   const uncertain = creatorEntries.filter(e => e.dateUncertain).length;
+  const pending   = creatorEntries.filter(e => e.lotPending).length;
   let tableHtml = '<table class="created-lots-table"><thead><tr><th>BC Lot Number</th><th>Lay Date</th><th></th></tr></thead><tbody>';
   creatorEntries.forEach((entry, i) => {
     const warnClass = entry.dateUncertain ? ' uncertain' : '';
     const warnIcon  = entry.dateUncertain ? '<span style="color:var(--warn);margin-right:4px;" title="Date uncertain — please verify">⚠</span>' : '';
+    const pendIcon  = entry.lotPending ? '<span style="color:var(--warn);margin-right:4px;" title="Awaiting flock prefix">⚠</span>' : '';
+    const lotColor  = entry.lotPending ? 'var(--warn)' : 'var(--accent2)';
     const safeLot   = entry.lot.replace(/'/g, '&#39;');
     const safeDate  = entry.date.replace(/'/g, '&#39;');
     tableHtml += '<tr>'
-      + '<td style="color:var(--accent2);font-weight:600">' + entry.lot + '</td>'
+      + '<td style="color:' + lotColor + ';font-weight:600">' + pendIcon + entry.lot + '</td>'
       + '<td>' + warnIcon + '<input class="creator-date-input' + warnClass + '" value="' + safeDate + '" data-idx="' + i + '" oninput="updateEntryDate(this)"/></td>'
       + '<td><button class="copy-btn" onclick="copySingle(this,\'' + safeLot + '\\t' + safeDate + '\')">copy</button></td>'
       + '</tr>';
   });
   tableHtml += '</tbody></table>';
 
-  if (uncertain) {
-    tableHtml = '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--warn);padding:10px 14px;border-bottom:1px solid var(--border);">⚠ ' + uncertain + ' date(s) could not be read — please fill in the highlighted fields before copying.</div>' + tableHtml;
+  let banners = '';
+  if (pending) {
+    banners += '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--warn);padding:10px 14px;border-bottom:1px solid var(--border);">⚠ ' + pending + ' row(s) waiting on a flock prefix — enter one above to complete them.</div>';
   }
-  list.innerHTML = tableHtml;
+  if (uncertain) {
+    banners += '<div style="font-family:var(--mono);font-size:0.7rem;color:var(--warn);padding:10px 14px;border-bottom:1px solid var(--border);">⚠ ' + uncertain + ' date(s) could not be read — please fill in the highlighted fields before copying.</div>';
+  }
+  list.innerHTML = banners + tableHtml;
 
   // Update the copy area
   rebuildCopyBox();
@@ -1036,7 +1230,12 @@ function updateEntryDate(input) {
 
 function rebuildCopyBox() {
   const box = document.getElementById('createdLotsBox');
-  box.textContent = creatorEntries.map(e => e.lot + '\t' + e.date).join('\n');
+  // Only include rows with a fully-formed lot — pending rows (7-digit Pack
+  // ID waiting on a flock prefix) are excluded from the paste buffer.
+  const complete = creatorEntries.filter(e => !e.lotPending);
+  box.textContent = complete.length
+    ? complete.map(e => e.lot + '\t' + e.date).join('\n')
+    : '—';
 }
 
 function updateCreatorBadge() {
@@ -1237,10 +1436,68 @@ function processImage(file) {
       const rawText = ocrData.text || '';
       if (!rawText.trim()) throw new Error('No text found in image. Try a clearer screenshot.');
 
-      // Extract all 6-8 digit numbers that look like pallet numbers
-      // Split text into tokens and extract pure numeric ones in range 5-8 digits
-      const tokens = rawText.split(/[\s\r\n\t,;|]+/);
-      const numbers = [...new Set(tokens.map(t => t.replace(/[^0-9]/g, '')).filter(t => t.length >= 5 && t.length <= 8))];
+      // Extract pallet IDs from OCR text. Three passes:
+      //   1. IP-style alphanumeric pallet IDs — 16 chars: "IP" + 5 digits + 2-letter
+      //      delimiter (OT, MM, …) + 7 digits. Use normalizeIpToken(_, false) to
+      //      reconstruct canonical form even when Tesseract mangles characters
+      //      (e.g. "IP006510T0000598" → "IP00651OT0000598").
+      //   2. Pure numeric pallet numbers — 5-9 digits.
+      //   3. "PREFIX + digits" tokens missing the space separator, e.g. "NOLTCL54901098".
+      const numbers = [];
+      const seen = new Set();
+      const addCandidate = (cleaned) => {
+        if (!cleaned || seen.has(cleaned)) return;
+        seen.add(cleaned);
+        numbers.push(cleaned);
+      };
+
+      // Pass 1: Look for IP-style candidates and feed each through the canonical
+      // normalizer (lenient mode — accepts any 2-letter delimiter, not just OT).
+      // Also try joining adjacent tokens to handle the case where Tesseract split
+      // the ID (e.g. "IP00651" + "OT0000598" → "IP00651OT0000598").
+      const ipCandidateRx = /[A-Za-z0-9]{12,20}/g;
+      const ipCands = rawText.match(ipCandidateRx) || [];
+      ipCands.forEach(c => {
+        const norm = normalizeIpToken(c, false);
+        if (norm) addCandidate(norm);
+      });
+      // Try joining adjacent alphanumeric tokens too (handles split IPs).
+      const tokens = rawText.split(/[\s\r\n\t,;|]+/).filter(Boolean);
+      for (let i = 0; i < tokens.length - 1; i++) {
+        const joined = (tokens[i] + tokens[i+1]).replace(/[^A-Za-z0-9]/g, '');
+        if (joined.length >= 14 && joined.length <= 18) {
+          const norm = normalizeIpToken(joined, false);
+          if (norm) addCandidate(norm);
+        }
+      }
+
+      // Pass 2: Pure numeric pallets (5-9 digits) from individual tokens. The upper
+      // bound was widened from 8 to 9 to handle longer pallet schemes (e.g. 149406381).
+      tokens.forEach(t => {
+        const cleaned = t.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (!cleaned) return;
+        if (/^\d{5,9}$/.test(cleaned)) addCandidate(cleaned);
+      });
+
+      // Pass 3: "PREFIX + 6-9 digits" tokens with no separator, e.g. "NOLTCL54901098",
+      // "CRITBA149406381", "CRITBAZ50109828". OCR sometimes drops the space between
+      // the farm prefix and the pallet number, especially in tightly-cropped table
+      // screenshots. Allow 2-7 letter prefixes (CRITBAZ is 7) and 6-9 digit pallets.
+      // Extract the trailing digit run (the actual pallet #). Be tolerant of common
+      // Tesseract digit-letter confusions in the numeric tail (O→0, I→1, S→5, B→8)
+      // since the prefix has already absorbed the letter run, leaving only digits.
+      const ocrDigitFix = (s) => s.replace(/O/g,'0').replace(/I/g,'1').replace(/S/g,'5').replace(/B/g,'8');
+      tokens.forEach(t => {
+        const cleaned = t.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        if (!cleaned) return;
+        // Skip anything we'd already have caught (pure digits, IP codes).
+        if (/^\d+$/.test(cleaned)) return;
+        if (normalizeIpToken(cleaned, false)) return;
+        const m = cleaned.match(/^([A-Z]{2,7})([A-Z0-9]{6,9})$/);
+        if (!m) return;
+        const tail = ocrDigitFix(m[2]);
+        if (/^\d{6,9}$/.test(tail)) addCandidate(tail);
+      });
 
       if (!numbers.length) throw new Error('Could not extract pallet numbers.');
 
@@ -1281,14 +1538,51 @@ function fuzzyGroupFarms(farms) {
 function parsePalletInput(raw) {
   return raw.trim().split(/\n/).map(l=>l.trim()).filter(Boolean).map(line => {
     const parts = line.split(/\t/);
-    return { pallet: parts[0].replace(/\D/g,'').trim(), date: parts[1]?.trim()||'', farm: parts[2]?.trim()||'' };
+    const rawPallet = (parts[0] || '').trim();
+    // Preserve alphanumeric pallet IDs (e.g. IP00911OT0000803). Uppercase for consistent matching.
+    // If the token is all-numeric (after stripping symbols), keep digits only — backward compatible
+    // with the old 6-8 digit pallet workflow. Otherwise keep letters+digits as-is.
+    const cleaned = rawPallet.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const isAlpha = /[A-Z]/.test(cleaned);
+    let pallet;
+    if (isAlpha) {
+      // Try canonical IP-pallet reconstruction first (lenient — accepts non-OT
+      // delimiters like MM). Fixes OCR errors like "IP006510T0000598" → "IP00651OT0000598",
+      // "P00651OT0000598" → ditto, and accepts new formats like "IP07911MM0003779".
+      const ipNorm = normalizeIpToken(cleaned, false);
+      if (ipNorm) {
+        pallet = ipNorm;
+      } else {
+        // Handle "PREFIX + pallet#" tokens like "SCHLMA 53305533", "NOLTCL54901098",
+        // "CRITBA149406381" (9-digit tail), or "CRITBAZ50109828" (7-letter prefix).
+        // BC stores these as "SCHLMA 53305533" / "CRITBAZ 50109828" and the BC lot
+        // parser keys palletMap on the digit suffix only, so we extract just the
+        // digits when a 2-7 letter prefix is followed by a 6-9 digit pallet number.
+        // Anything that doesn't fit this pattern (e.g. odd OCR junk) is kept as-is so
+        // the existing canonical/numeric-suffix fallbacks in runMatch can still try.
+        const prefixDigitsMatch = cleaned.match(/^([A-Z]{2,7})(\d{6,9})$/);
+        pallet = prefixDigitsMatch ? prefixDigitsMatch[2] : cleaned;
+      }
+    } else {
+      pallet = cleaned.replace(/\D/g, '');
+    }
+    return { pallet, date: parts[1]?.trim()||'', farm: parts[2]?.trim()||'' };
   }).filter(r => r.pallet);
 }
 
 function parseLotInput(raw) {
   return raw.trim().split(/\n/).map(l=>l.trim()).filter(Boolean).map(l => {
-    const m = l.match(/^(\d{4}|[A-Z]{2,6})[ -](.+)/);
-    return m ? { full: l.trim(), prefix: m[1], pallet: m[2] } : null;
+    // Standard format: "PREFIX-PALLET" or "PREFIX PALLET" (4-digit numeric or 2-7 letter prefix)
+    const m = l.match(/^(\d{4}|[A-Z]{2,7})[ -](.+)/);
+    if (m) return { full: l.trim(), prefix: m[1], pallet: m[2] };
+    // Fallback: bare IP-style pallet code with no prefix (e.g. "IP00651OT0000598").
+    // Resolve its flock from IP_LOOKUP if possible so the prefix is still useful.
+    const upper = l.trim().toUpperCase();
+    if (isIpPackId(upper)) {
+      const flock = lookupIpFlock(upper);
+      return { full: l.trim(), prefix: flock || '', pallet: upper };
+    }
+    return null;
   }).filter(Boolean);
 }
 
@@ -1333,6 +1627,22 @@ function savePrefix(input) {
   saveFarmPrefixMap(farmPrefixMap);
 }
 
+// Canonicalize a pallet ID for matching. For IP-style codes that come from OCR
+// or paste, use normalizeIpToken() to reconstruct the canonical 16-char form
+// (handles "IP006510T0000598" → "IP00651OT0000598", "P00651OT0000598" → ditto,
+// and non-OT delimiters like "IP07911MM0003779").
+function canonicalizePallet(s) {
+  const upper = (s || '').toUpperCase();
+  if (!upper) return '';
+  // If this looks like it could be an IP code (has letters), try canonical reconstruction
+  if (/[A-Z]/.test(upper)) {
+    const stripped = upper.replace(/[^A-Z0-9]/g, '');
+    const ipNorm = normalizeIpToken(stripped, false);
+    if (ipNorm) return ipNorm;
+  }
+  return upper;
+}
+
 // ── Match ─────────────────────────────────────────────────────────
 function runMatch() {
   parsedPallets = parsePalletInput(document.getElementById('palletInput').value);
@@ -1342,14 +1652,31 @@ function runMatch() {
 
   const palletMap = {};
   parsedLots.forEach(l => {
-    const numericSuffix = l.pallet.replace(/\D/g,'');
-    const keys = new Set([l.pallet, numericSuffix].filter(Boolean));
+    const upper = (l.pallet || '').toUpperCase();
+    const numericSuffix = upper.replace(/\D/g,'');
+    const canonical = canonicalizePallet(upper);  // canonical IP form, e.g. "IP00651OT0000598"
+    const keys = new Set([upper, numericSuffix, canonical].filter(Boolean));
     keys.forEach(k => { (palletMap[k]=palletMap[k]||[]).push(l); });
   });
 
   let ok=0, warn=0, err=0;
   const rows = parsedPallets.map(p => {
-    const matches = palletMap[p.pallet] || [];
+    // Try multiple lookup keys: exact input, then canonical IP form (handles OCR errors),
+    // then a digit-only suffix (handles "PREFIX12345678" tokens that didn't fit the
+    // 2-6 letter prefix shape in parsePalletInput, e.g. unusual prefixes).
+    let matches = palletMap[p.pallet] || [];
+    if (!matches.length) {
+      const canonical = canonicalizePallet(p.pallet);
+      if (canonical && canonical !== p.pallet) {
+        matches = palletMap[canonical] || [];
+      }
+    }
+    if (!matches.length) {
+      const digits = (p.pallet || '').replace(/\D/g, '');
+      if (digits && digits.length >= 6 && digits !== p.pallet) {
+        matches = palletMap[digits] || [];
+      }
+    }
     const pref = farmPrefixMap[normalizeFarm(p.farm||'')];
     let result=null, status='';
     if (!matches.length) { status='NOT FOUND'; err++; }
@@ -1368,13 +1695,20 @@ function runMatch() {
 
   const tbody = document.getElementById('resultBody');
   tbody.innerHTML = '';
+  // Helper: return the qty for a matched lot, defaulting to 900 when the lot
+  // has no qty data at all (undefined/null). A real 0 from BC is preserved.
+  const qtyFor = (lot) => {
+    const v = lotQtyMap[lot];
+    return (v === undefined || v === null) ? 900 : v;
+  };
   rows.forEach(r => {
     const sc = r.status==='OK'?'pill-ok':r.status==='AMBIGUOUS'?'pill-warn':'pill-err';
     const lc = r.status==='OK'?'lot-full':r.status==='AMBIGUOUS'?'lot-ambiguous':'lot-unknown';
     const safe = (r.result||'').replace(/'/g,"\\'");
     const tr = document.createElement('tr');
-    const qty = r.status==='OK' && lotQtyMap[r.result] !== undefined ? lotQtyMap[r.result]?.toLocaleString() : '—';
-    const qtyColor = r.status==='OK' ? (lotQtyMap[r.result] > 0 ? 'var(--accent2)' : 'var(--danger)') : 'var(--muted)';
+    const qtyVal = r.status==='OK' ? qtyFor(r.result) : null;
+    const qty = qtyVal !== null ? qtyVal.toLocaleString() : '—';
+    const qtyColor = r.status==='OK' ? (qtyVal > 0 ? 'var(--accent2)' : 'var(--danger)') : 'var(--muted)';
     // Egg type: for OK rows show the single lot's type; for AMBIGUOUS show all distinct types
     let eggTypeCell = '—';
     if (r.status === 'OK' && lotEggTypeMap[r.result]) {
@@ -1398,13 +1732,13 @@ function runMatch() {
       <td style="font-family:var(--mono);color:var(--text)">${eggTypeCell}</td>
       <td style="font-family:var(--mono);color:var(--text)">${locationCell}</td>
       <td><span class="status-pill ${sc}">${r.status}</span></td>
-      <td>${r.status==='OK'?`<button class="copy-btn" onclick="copySingle(this,'TRUE\t${safe}\t${lotQtyMap[r.result]||0}')">copy row</button>`:''}</td>`;
+      <td>${r.status==='OK'?`<button class="copy-btn" onclick="copySingle(this,'TRUE\t${safe}\t${qtyFor(r.result)}')">copy row</button>`:''}</td>`;
     tbody.appendChild(tr);
   });
 
   const okRows = rows.filter(r=>r.status==='OK');
   // Tab-separated for BC paste: Availability Lot No (TRUE) [TAB] Lot No [TAB] Qty
-  const bcPasteLines = okRows.map(r => `TRUE\t${r.result}\t${lotQtyMap[r.result]||0}`);
+  const bcPasteLines = okRows.map(r => `TRUE\t${r.result}\t${qtyFor(r.result)}`);
   document.getElementById('allLotsBox').textContent = bcPasteLines.length ? bcPasteLines.join('\n') : 'No matched lots yet.';
   // Lots only
   document.getElementById('lotsOnlyBox').textContent = okRows.length ? okRows.map(r=>r.result).join('\n') : 'No matched lots yet.';
