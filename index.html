@@ -1154,6 +1154,7 @@ global.PalletTable = { extractPalletTable, extractFromPages, asPalletId };
   <div class="actions">
     <button class="btn btn-primary" onclick="runMatch()">▶ Match Lots</button>
     <button class="btn btn-success" onclick="copyAllLots()">⧉ Copy for BC Paste</button>
+    <button class="btn btn-primary" id="matcherExportBtn" onclick="exportMatcherXlsx()">⬇ Export .xlsx</button>
     <button class="btn btn-secondary" onclick="clearAll()">✕ Clear</button>
   </div>
 
@@ -4361,6 +4362,70 @@ function renderMatchXlPreview(cols, rows, includeHeader) {
           ? 'The header row <strong>is</strong> included in the copy — turn that off in Paste Layout if you\u2019re pasting onto an existing grid.'
           : 'The header row is shown for orientation only and is <strong>not</strong> copied.');
   }
+}
+
+// ── Matcher XLSX export ───────────────────────────────────────────
+// Sheet 1 "Item Tracking Lines" follows the Paste Layout (same columns, same
+// order, same matched-only rows as Copy for BC Paste), written as real
+// boolean / number cells like BC_Lot_Copy_and_Paste_Template.xlsx. The header
+// row is always included, same as the Lot Creator export.
+// Sheet 2 "Match Report" lists every pallet row, including ambiguous and
+// not-found ones, so nothing on the load silently drops off.
+function exportMatcherXlsx() {
+  if (!matcherRows.length) { alert('Nothing to export yet — add pallet rows and run ▶ Match Lots first.'); return; }
+  const cols = activeMatchColumns();
+  const rows = matchExportRows();
+  if (!rows.length) { alert('No matched lots to export — every row is ambiguous or not found.'); return; }
+  if (!cols.length) { alert('Select at least one column in the Paste Layout panel.'); return; }
+
+  const typed = (r, key) => {
+    if (key === 'avail') return true;
+    if (key === 'qty')   return (r.qty === null || r.qty === '') ? '' : Number(r.qty);
+    return matchCellValue(r, key) || '';
+  };
+
+  const header = cols.map(c => MATCH_COLUMN_CATALOG[c.key].name);
+  const aoa = [header].concat(rows.map(r => cols.map(c => typed(r, c.key))));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = cols.map(c => ({ wch: c.key === 'lot' ? 26 : c.key === 'avail' ? 20 : c.key === 'pallet' ? 20 : 16 }));
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let r = 1; r <= range.e.r; r++) {
+    cols.forEach((c, ci) => {
+      const cell = ws[XLSX.utils.encode_cell({ r, c: ci })];
+      if (!cell) return;
+      if (c.key === 'qty' && typeof cell.v === 'number') { cell.t = 'n'; cell.z = '#,##0.#####'; }
+      else if (c.key === 'avail' && typeof cell.v === 'boolean') { cell.t = 'b'; }
+      else if (typeof cell.v === 'string') { cell.t = 's'; }
+    });
+  }
+
+  const report = [['#', 'Pallet ID', 'Farm', 'BC Lot Number', 'Qty', 'Egg Type', 'Location', 'Status', 'Note']]
+    .concat(matcherRows.map((r, i) => [
+      i + 1,
+      r.pallet || '',
+      r.farm || '',
+      r.result || '',
+      (r.status === 'OK' && r.qty !== null) ? Number(r.qty) : '',
+      r.egg || '',
+      r.loc || '',
+      r.status || 'NOT MATCHED',
+      r.status === 'OK'
+        ? (r.qtyAssumed ? 'No qty in BC data, 900 assumed' : (r.pinned ? 'Picked by hand' : ''))
+        : r.status === 'AMBIGUOUS' ? 'Matches more than one lot, not in paste'
+        : r.status === 'NOT FOUND' ? 'No match in BC, not in paste' : 'Not matched yet'
+    ]));
+  const repWs = XLSX.utils.aoa_to_sheet(report);
+  repWs['!cols'] = [{ wch: 5 }, { wch: 20 }, { wch: 18 }, { wch: 48 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 38 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Item Tracking Lines');
+  XLSX.utils.book_append_sheet(wb, repWs, 'Match Report');
+  const stamp = new Date().toISOString().slice(0, 10);
+  const company = String(activeCompany || '').replace(/\s+/g, '');
+  XLSX.writeFile(wb, 'BC_Lot_Match_' + (company ? company + '_' : '') + stamp + '.xlsx');
+
+  const btn = document.getElementById('matcherExportBtn');
+  if (btn) { const o = btn.innerHTML; btn.innerHTML = '✓ Exported!'; setTimeout(() => btn.innerHTML = o, 1800); }
 }
 
 function copySingle(btn, text) {
